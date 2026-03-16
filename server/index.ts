@@ -1,6 +1,6 @@
 import cors from 'cors';
 import express from 'express';
-import sessionsRouter, { tradeRouter } from './routes/sessions.js';
+import sessionsRouter, { fillRouter, tradeRouter } from './routes/sessions.js';
 import analyticsRouter from './routes/analytics.js';
 
 const app = express();
@@ -15,6 +15,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/sessions', sessionsRouter);
 app.use('/api/analytics', analyticsRouter);
 app.use('/api/trades', tradeRouter);
+app.use('/api/fills', fillRouter);
 
 // ─── Health check ─────────────────────────────────────────────────────────────
 app.get('/api/health', (_req, res) => {
@@ -34,8 +35,18 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
+});
+
+server.on('error', (error: NodeJS.ErrnoException) => {
+  if (error.code === 'EADDRINUSE') {
+    console.error(`Port ${PORT} is already in use. 'npm run dev' already starts the API server, so do not run 'npm run server' in a second terminal.`);
+    process.exit(1);
+  }
+
+  console.error('[server error]', error);
+  process.exit(1);
 });
 
 export default app;

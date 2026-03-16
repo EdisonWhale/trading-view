@@ -4,11 +4,16 @@ import {
   upsertSessionWithData,
   listSessions,
   getSessionFull,
+  getJournalBySession,
+  getTradeById,
+  getFillById,
   upsertJournal,
   deleteSession,
   updateTradeAnnotation,
+  updateFillReason,
 } from '../db.js';
 import { parseNinjaTraderPDF } from '../parsers/ninjatrader.js';
+import { getSessionMarketData, type MarketTimeframe } from '../services/marketData.js';
 import type { FillRecord, TradeRecord } from '../parsers/ninjatrader.js';
 
 const router = Router();
@@ -49,6 +54,7 @@ router.post('/import', upload.single('pdf'), async (req: Request, res: Response)
       qty: f.qty,
       price: f.price,
       order_id: f.order_id,
+      reason: null,
     }));
 
     const tradeRows = result.trades.map((t: TradeRecord) => ({
@@ -83,15 +89,8 @@ router.post('/import', upload.single('pdf'), async (req: Request, res: Response)
       tradeRows
     );
 
-    res.status(201).json({
-      message: 'Session imported successfully',
-      date: result.date,
-      instrument: result.instrument,
-      instrumentName: result.instrumentName,
-      netPnl: result.netPnl,
-      tradeCount: result.trades.length,
-      fillCount: result.fills.length,
-    });
+    const detail = getSessionFull(result.date);
+    res.status(201).json(detail);
   } catch (err) {
     console.error('[POST /import]', err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'Import failed' });
@@ -106,31 +105,6 @@ router.get('/', (_req: Request, res: Response) => {
   } catch (err) {
     console.error('[GET /sessions]', err);
     res.status(500).json({ error: 'Failed to fetch sessions' });
-  }
-});
-
-// ─── GET /api/sessions/:date ──────────────────────────────────────────────────
-router.get('/:date', (req: Request, res: Response) => {
-  try {
-    const { date } = req.params;
-
-    // Validate date format YYYY-MM-DD
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      res.status(400).json({ error: 'Date must be in YYYY-MM-DD format' });
-      return;
-    }
-
-    const data = getSessionFull(date);
-
-    if (!data.session) {
-      res.status(404).json({ error: `Session for ${date} not found` });
-      return;
-    }
-
-    res.json(data);
-  } catch (err) {
-    console.error('[GET /sessions/:date]', err);
-    res.status(500).json({ error: 'Failed to fetch session' });
   }
 });
 
@@ -182,7 +156,8 @@ router.patch('/:date/journal', (req: Request, res: Response) => {
       rule_breaks: (rule_breaks as string) ?? null,
     });
 
-    res.json({ message: 'Journal entry saved', date });
+    const journal = getJournalBySession(date);
+    res.json(journal);
   } catch (err) {
     console.error('[PATCH /sessions/:date/journal]', err);
     res.status(500).json({ error: 'Failed to save journal entry' });
@@ -213,9 +188,64 @@ router.delete('/:date', (req: Request, res: Response) => {
   }
 });
 
+// ─── GET /api/sessions/:date/market ───────────────────────────────────────────
+router.get('/:date/market', async (req: Request, res: Response) => {
+  try {
+    const { date } = req.params;
+    const timeframe = (req.query.timeframe as string | undefined) ?? '1m';
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      res.status(400).json({ error: 'Date must be in YYYY-MM-DD format' });
+      return;
+    }
+
+    if (!['1m', '5m', '15m', '1h', '4h', '1d'].includes(timeframe)) {
+      res.status(400).json({ error: 'Unsupported timeframe' });
+      return;
+    }
+
+    const detail = getSessionFull(date);
+    if (!detail.session) {
+      res.status(404).json({ error: `Session for ${date} not found` });
+      return;
+    }
+
+    const marketData = await getSessionMarketData(date, detail.fills, timeframe as MarketTimeframe);
+    res.json(marketData);
+  } catch (err) {
+    console.error('[GET /sessions/:date/market]', err);
+    res.status(500).json({ error: 'Failed to fetch market data' });
+  }
+});
+
+// ─── GET /api/sessions/:date ──────────────────────────────────────────────────
+router.get('/:date', (req: Request, res: Response) => {
+  try {
+    const { date } = req.params;
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      res.status(400).json({ error: 'Date must be in YYYY-MM-DD format' });
+      return;
+    }
+
+    const data = getSessionFull(date);
+
+    if (!data.session) {
+      res.status(404).json({ error: `Session for ${date} not found` });
+      return;
+    }
+
+    res.json(data);
+  } catch (err) {
+    console.error('[GET /sessions/:date]', err);
+    res.status(500).json({ error: 'Failed to fetch session' });
+  }
+});
+
 // ─── PATCH /api/trades/:id ────────────────────────────────────────────────────
 // Exported separately so index.ts can mount it at /api/trades/:id
 export const tradeRouter = Router();
+export const fillRouter = Router();
 
 tradeRouter.patch('/:id', (req: Request, res: Response) => {
   try {
@@ -233,10 +263,46 @@ tradeRouter.patch('/:id', (req: Request, res: Response) => {
     }
 
     updateTradeAnnotation(id, annotation ?? null);
-    res.json({ message: 'Trade annotation updated', id });
+    const trade = getTradeById(id);
+
+    if (!trade) {
+      res.status(404).json({ error: `Trade ${id} not found` });
+      return;
+    }
+
+    res.json(trade);
   } catch (err) {
     console.error('[PATCH /trades/:id]', err);
     res.status(500).json({ error: 'Failed to update trade annotation' });
+  }
+});
+
+fillRouter.patch('/:id/reason', (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id) || id <= 0) {
+      res.status(400).json({ error: 'Fill id must be a positive integer' });
+      return;
+    }
+
+    const { reason } = req.body as { reason?: string | null };
+    if (reason !== undefined && reason !== null && typeof reason !== 'string') {
+      res.status(400).json({ error: 'reason must be a string or null' });
+      return;
+    }
+
+    updateFillReason(id, reason ?? null);
+    const fill = getFillById(id);
+
+    if (!fill) {
+      res.status(404).json({ error: `Fill ${id} not found` });
+      return;
+    }
+
+    res.json(fill);
+  } catch (err) {
+    console.error('[PATCH /fills/:id/reason]', err);
+    res.status(500).json({ error: 'Failed to update fill reason' });
   }
 });
 

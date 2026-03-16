@@ -99,7 +99,7 @@ function parseNtTimestamp(raw: string): string {
   let hours = parseInt(hh, 10);
   if (ampm.toUpperCase() === 'PM' && hours !== 12) hours += 12;
   if (ampm.toUpperCase() === 'AM' && hours === 12) hours = 0;
-  return `${yyyy}-${mm}-${dd}T${String(hours).padStart(2, '0')}:${min}:${ss}`;
+  return `${yyyy}-${mm}-${dd}T${String(hours).padStart(2, '0')}:${min}:${ss}Z`;
 }
 
 /** MM/DD/YYYY → YYYY-MM-DD */

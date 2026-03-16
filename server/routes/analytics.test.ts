@@ -167,10 +167,10 @@ describe('buildAnalyticsPayload', () => {
     const payload = buildAnalyticsPayload(sessions, trades, 5000);
 
     expect(payload.tradeScatter).toEqual([
-      { entryTime: '2026-03-10T15:00:00', netPnl: 9.35, qty: 1, direction: 'long' },
-      { entryTime: '2026-03-11T14:00:00', netPnl: 7.06, qty: 1, direction: 'short' },
-      { entryTime: '2026-03-12T14:45:00', netPnl: -5.57, qty: 1, direction: 'long' },
-      { entryTime: '2026-03-13T14:04:39', netPnl: 60.68, qty: 1, direction: 'short' },
+      { entryTime: '2026-03-10T15:00:00', netPnl: 9.35, qty: 1, direction: 'long', durationSeconds: 300 },
+      { entryTime: '2026-03-11T14:00:00', netPnl: 7.06, qty: 1, direction: 'short', durationSeconds: 120 },
+      { entryTime: '2026-03-12T14:45:00', netPnl: -5.57, qty: 1, direction: 'long', durationSeconds: 300 },
+      { entryTime: '2026-03-13T14:04:39', netPnl: 60.68, qty: 1, direction: 'short', durationSeconds: 948 },
     ]);
   });
 });

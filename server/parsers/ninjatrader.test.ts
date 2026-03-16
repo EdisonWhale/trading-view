@@ -21,6 +21,9 @@ describe('parseNinjaTraderPDF', () => {
     expect(result.netPnl).toBeCloseTo(-447.06, 2);
     expect(result.fills).toHaveLength(13);
     expect(result.trades).toHaveLength(8);
+    expect(result.fills[0].timestamp.endsWith('Z')).toBe(true);
+    expect(result.trades[0].entry_time.endsWith('Z')).toBe(true);
+    expect(result.trades[0].exit_time.endsWith('Z')).toBe(true);
   });
 
   it('parses multi-instrument statements with instrument-specific multipliers', async () => {

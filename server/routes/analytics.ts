@@ -66,6 +66,10 @@ export function buildAnalyticsPayload(
   const totalWinAmount = winPnls.reduce((sum, value) => sum + value, 0);
   const totalLossAmount = Math.abs(lossPnls.reduce((sum, value) => sum + value, 0));
   const profitFactor = totalLossAmount > 0 ? round2(totalWinAmount / totalLossAmount) : totalWinAmount > 0 ? Infinity : 0;
+  const maxWin = winPnls.length > 0 ? round2(Math.max(...winPnls)) : 0;
+  const maxLoss = lossPnls.length > 0 ? round2(Math.min(...lossPnls)) : 0;
+  const totalCommissions = round2(sessions.reduce((sum, s) => sum + (Number(s.commissions) || 0), 0));
+  const totalNetPnl = round2(sessions.reduce((sum, s) => sum + (Number(s.net_pnl) || 0), 0));
 
   let maxDrawdown = 0;
   let maxDrawdownDate = '';
@@ -105,7 +109,41 @@ export function buildAnalyticsPayload(
       netPnl: round2(trade.net_pnl),
       qty: trade.qty,
       direction: trade.direction ?? 'unknown',
+      durationSeconds: trade.duration_seconds,
     }));
+
+  // ── Direction split stats ──────────────────────────────────────────────────
+  function calcDirectionStats(subset: TradeRow[]) {
+    const w = subset.filter((t) => t.net_pnl > 0);
+    const l = subset.filter((t) => t.net_pnl < 0);
+    const totalPnl = round2(subset.reduce((s, t) => s + t.net_pnl, 0));
+    const winRate = subset.length > 0 ? round2((w.length / subset.length) * 100) : 0;
+    const avgWin = w.length > 0 ? round2(w.reduce((s, t) => s + t.net_pnl, 0) / w.length) : 0;
+    const avgLoss = l.length > 0 ? round2(l.reduce((s, t) => s + t.net_pnl, 0) / l.length) : 0;
+    const avgDuration = subset.length > 0
+      ? round2(subset.reduce((s, t) => s + t.duration_seconds, 0) / subset.length)
+      : 0;
+    return { count: subset.length, wins: w.length, losses: l.length, winRate, totalPnl, avgWin, avgLoss, avgDuration };
+  }
+
+  const longTrades = trades.filter((t) => t.direction === 'long');
+  const shortTrades = trades.filter((t) => t.direction === 'short');
+  const directionStats = {
+    long: calcDirectionStats(longTrades),
+    short: calcDirectionStats(shortTrades),
+  };
+
+  // ── Duration stats ─────────────────────────────────────────────────────────
+  const winTrades = trades.filter((t) => t.net_pnl > 0);
+  const lossTrades = trades.filter((t) => t.net_pnl < 0);
+  const allDurations = trades.map((t) => t.duration_seconds);
+  const durationStats = {
+    avgDuration:    trades.length > 0 ? round2(allDurations.reduce((s, v) => s + v, 0) / trades.length) : 0,
+    avgWinDuration: winTrades.length > 0 ? round2(winTrades.reduce((s, t) => s + t.duration_seconds, 0) / winTrades.length) : 0,
+    avgLossDuration: lossTrades.length > 0 ? round2(lossTrades.reduce((s, t) => s + t.duration_seconds, 0) / lossTrades.length) : 0,
+    maxDuration:    allDurations.length > 0 ? Math.max(...allDurations) : 0,
+    minDuration:    allDurations.length > 0 ? Math.min(...allDurations) : 0,
+  };
 
   const { currentStreak, longestWinStreak, longestLossStreak } = calcStreaks(trades);
 
@@ -131,10 +169,16 @@ export function buildAnalyticsPayload(
       losses,
       breakeven,
       winRate,
+      maxWin,
+      maxLoss,
+      totalCommissions,
+      totalNetPnl,
     },
     pnlDistribution,
     timeHeatmap,
     tradeScatter,
+    directionStats,
+    durationStats,
     streaks: {
       current: currentStreak,
       longestWin: longestWinStreak,

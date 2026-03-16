@@ -34,7 +34,7 @@ export function normalizeSessionSummary(payload: any): import('../types').Sessio
   };
 }
 
-function normalizeJournalEntry(payload: any): import('../types').JournalEntry {
+export function normalizeJournalEntry(payload: any): import('../types').JournalEntry {
   return {
     sessionDate: payload.session_date ?? payload.sessionDate,
     emotionScore: payload.emotion_score ?? payload.emotionScore ?? 0,
@@ -51,7 +51,7 @@ function normalizeJournalEntry(payload: any): import('../types').JournalEntry {
   };
 }
 
-function normalizeTrade(payload: any): import('../types').Trade {
+export function normalizeTrade(payload: any): import('../types').Trade {
   return {
     id: payload.id,
     sessionDate: payload.session_date ?? payload.sessionDate,
@@ -79,6 +79,7 @@ function normalizeFill(payload: any): import('../types').Fill {
     qty: Number(payload.qty ?? 0),
     price: Number(payload.price ?? 0),
     orderId: payload.order_id ?? payload.orderId ?? '',
+    reason: payload.reason ?? null,
   };
 }
 
@@ -103,6 +104,24 @@ export function normalizeSessionDetail(payload: any): import('../types').Session
   };
 }
 
+export function normalizeSessionMarketData(payload: any): import('../types').SessionMarketData {
+  return {
+    symbol: payload.symbol ?? '',
+    timeframe: payload.timeframe ?? '1m',
+    source: payload.source ?? '',
+    note: payload.note ?? null,
+    bars: (payload.bars ?? []).map((bar: any) => ({
+      time: bar.time,
+      open: Number(bar.open ?? 0),
+      high: Number(bar.high ?? 0),
+      low: Number(bar.low ?? 0),
+      close: Number(bar.close ?? 0),
+      volume: Number(bar.volume ?? 0),
+    })),
+    fills: (payload.fills ?? []).map(normalizeFill),
+  };
+}
+
 export const api = {
   // Sessions
   getSessions: async () => {
@@ -116,27 +135,36 @@ export const api = {
   importPdf: (file: File) => {
     const form = new FormData();
     form.append('pdf', file);
-    return request<import('../types').SessionDetail>('/sessions/import', {
+    return request<any>('/sessions/import', {
       method: 'POST',
       body: form,
-    });
+    }).then(normalizeSessionDetail);
   },
   deleteSession: (date: string) => request<void>(`/sessions/${date}`, { method: 'DELETE' }),
   updateJournal: (date: string, data: Partial<import('../types').JournalEntry>) =>
-    request<import('../types').JournalEntry>(`/sessions/${date}/journal`, {
+    request<any>(`/sessions/${date}/journal`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
-    }),
+    }).then(normalizeJournalEntry),
 
   // Trades
   updateTradeAnnotation: (id: number, annotation: string) =>
-    request<import('../types').Trade>(`/trades/${id}`, {
+    request<any>(`/trades/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ annotation }),
-    }),
+    }).then(normalizeTrade),
+  updateFillReason: (id: number, reason: string) =>
+    request<any>(`/fills/${id}/reason`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason }),
+    }).then(normalizeFill),
 
   // Analytics
   getAnalytics: () => request<import('../types').AnalyticsData>('/analytics'),
+  getSessionMarket: (date: string, timeframe: import('../types').SessionTimeframe) =>
+    request<any>(`/sessions/${date}/market?timeframe=${encodeURIComponent(timeframe)}`)
+      .then(normalizeSessionMarketData),
 };

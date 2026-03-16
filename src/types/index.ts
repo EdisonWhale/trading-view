@@ -30,6 +30,7 @@ export interface Fill {
   qty: number;
   price: number;
   orderId: string;
+  reason: string | null;
 }
 
 export interface Trade {
@@ -74,23 +75,64 @@ export interface SessionDetail {
 export interface AnalyticsData {
   equityCurve: Array<{ date: string; balance: number; netPnl: number }>;
   dailyPnl: Array<{ date: string; netPnl: number }>;
-  tradeScatter: Array<{ entryTime: string; netPnl: number; qty: number; direction: string }>;
+  tradeScatter: Array<{ entryTime: string; netPnl: number; qty: number; direction: string; durationSeconds: number }>;
+  directionStats: {
+    long: { count: number; wins: number; losses: number; winRate: number; totalPnl: number; avgWin: number; avgLoss: number; avgDuration: number };
+    short: { count: number; wins: number; losses: number; winRate: number; totalPnl: number; avgWin: number; avgLoss: number; avgDuration: number };
+  };
+  durationStats: {
+    avgDuration: number;
+    avgWinDuration: number;
+    avgLossDuration: number;
+    maxDuration: number;
+    minDuration: number;
+  };
   tradeStats: {
     totalTrades: number;
     wins: number;
     losses: number;
+    breakeven: number;
     winRate: number;
     avgWin: number;
     avgLoss: number;
     profitFactor: number;
     maxDrawdown: number;
     maxDrawdownDate: string;
+    totalSessions: number;
+    totalNetPnl: number;
+    totalCommissions: number;
+    maxWin: number;
+    maxLoss: number;
   };
   pnlDistribution: Array<{ range: string; count: number }>;
   timeHeatmap: Array<{ hour: number; totalPnl: number; tradeCount: number }>;
+  streaks: {
+    current: { type: 'win' | 'loss' | 'none'; count: number };
+    longestWin: number;
+    longestLoss: number;
+  };
 }
 
 export type TabId = 'overview' | 'journal' | 'analytics' | 'review' | 'settings';
+export type SessionTimeframe = '1m' | '5m' | '15m' | '1h' | '4h' | '1d';
+
+export interface ReplayBar {
+  time: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export interface SessionMarketData {
+  symbol: string;
+  timeframe: SessionTimeframe;
+  source: string;
+  note: string | null;
+  bars: ReplayBar[];
+  fills: Fill[];
+}
 
 // Chart indicator types (used by SessionChart / indicators.ts)
 export interface MarketBar {
