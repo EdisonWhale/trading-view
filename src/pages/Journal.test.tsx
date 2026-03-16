@@ -4,6 +4,7 @@ import Journal from './Journal';
 vi.mock('../api/client', () => ({
   api: {
     getSessions: vi.fn(),
+    getAnalytics: vi.fn(),
     getSession: vi.fn(),
   },
 }));
@@ -39,6 +40,31 @@ describe('Journal', () => {
         tradeCount: 2,
       },
     ] as any);
+
+    mockedApi.getAnalytics.mockResolvedValue({
+      equityCurve: [],
+      dailyPnl: [],
+      tradeScatter: [],
+      tradeStats: {
+        totalTrades: 0,
+        wins: 0,
+        losses: 0,
+        breakeven: 0,
+        winRate: 0,
+        avgWin: 0,
+        avgLoss: 0,
+        profitFactor: 0,
+        maxDrawdown: 0,
+        maxDrawdownDate: '',
+        totalSessions: 0,
+        totalNetPnl: 0,
+        totalCommissions: 0,
+        maxWin: 0,
+        maxLoss: 0,
+      },
+      pnlDistribution: [],
+      timeHeatmap: [],
+    } as any);
 
     mockedApi.getSession.mockResolvedValue({
       session: {
