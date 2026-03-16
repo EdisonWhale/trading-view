@@ -3,15 +3,17 @@ import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 interface Props {
   wins: number;
   losses: number;
+  breakeven: number;
   winRate: number;
 }
 
-export function WinRateDonut({ wins, losses, winRate }: Props) {
+export function WinRateDonut({ wins, losses, breakeven, winRate }: Props) {
   const data = [
     { name: '盈利', value: wins || 0 },
     { name: '亏损', value: losses || 0 },
+    ...(breakeven > 0 ? [{ name: '持平', value: breakeven }] : []),
   ];
-  const total = wins + losses;
+  const total = wins + losses + breakeven;
 
   return (
     <div style={{ position: 'relative', width: '100%' }}>
@@ -28,6 +30,7 @@ export function WinRateDonut({ wins, losses, winRate }: Props) {
           >
             <Cell fill="#1f9d6c" fillOpacity={0.88} />
             <Cell fill="#d66161" fillOpacity={0.80} />
+            {breakeven > 0 && <Cell fill="#8c96a4" fillOpacity={0.55} />}
           </Pie>
         </PieChart>
       </ResponsiveContainer>
