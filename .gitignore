@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+
+# Build output and caches
+dist/
+coverage/
+*.tsbuildinfo
+
+# Local environment and editor metadata
+.env
+.env.*
+!.env.example
+!.env.sample
+.DS_Store
+.vscode/
+.idea/
+.claude/
+
+# Logs and temporary output
+*.log
+tmp/
+output/
+
+# Local databases and app data
+data/
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+
+# Private documents and trading exports
+docs/pdfs/
+*.pdf
+*.csv
+*.tsv
+*.xls
+*.xlsx
+
+# Backups and archives
+*.bak
+*.tmp
+*.zip
