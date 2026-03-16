@@ -168,7 +168,7 @@ export function EquityCurve({ data, mode, variant }: Props) {
         <div className="equity-curve__stat">
           <span>最大回撤</span>
           <strong className="tone-loss">
-            {mode === 'amount' ? formatCurrency(maxDD) : formatPercent(maxDDPercent)}
+            {mode === 'amount' ? formatCurrency(maxDD) : `${maxDDPercent.toFixed(2)}%`}
           </strong>
         </div>
       </div>
