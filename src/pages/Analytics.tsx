@@ -24,15 +24,6 @@ export default function Analytics() {
   if (!data || data.equityCurve.length === 0) {
     return (
       <div className="page-stack">
-        <section className="page-band">
-          <div className="page-band__copy">
-            <p className="page-band__eyebrow">Pattern Lab</p>
-            <h2 className="page-band__title">让图表分析成为“决策前室”，而不是视觉噪音仓库</h2>
-            <p className="page-band__text">
-              我把这个页面定义成结构实验室。等你导入交易数据后，资金曲线、回撤、时段分布和盈亏分布会在同一套视觉语法里呈现。
-            </p>
-          </div>
-        </section>
         <div className="empty-state empty-state--hero">
           <div className="empty-state__seal">AN</div>
           <h3>暂无可分析样本</h3>
@@ -42,33 +33,10 @@ export default function Analytics() {
     );
   }
 
-  const { tradeStats: stats, equityCurve, dailyPnl, pnlDistribution, timeHeatmap } = data;
-  const scatterTrades = equityCurve.map((point) => ({
-    entryTime: `${point.date}T10:00:00Z`,
-    netPnl: point.netPnl,
-    qty: 1,
-    direction: point.netPnl >= 0 ? 'long' : 'short',
-  }));
+  const { tradeStats: stats, equityCurve, dailyPnl, pnlDistribution, timeHeatmap, tradeScatter } = data;
 
   return (
     <div className="page-stack">
-      <section className="page-band">
-        <div className="page-band__copy">
-          <p className="page-band__eyebrow">Pattern Lab</p>
-          <h2 className="page-band__title">让每一张图都服务于判断，而不是服务于炫技</h2>
-          <p className="page-band__text">
-            这里不追求花哨，而追求识别能力。你应该一眼看到回撤压力、盈利分布是否偏态，以及交易时段是否真正具备优势。
-          </p>
-        </div>
-        <div className="page-band__aside">
-          <div className="ink-callout">
-            <span>分析基调</span>
-            <strong>终端式信息密度</strong>
-            <p>用更深的墨阶控制视觉重心，只让最重要的风险和优势信号跳出来。</p>
-          </div>
-        </div>
-      </section>
-
       <div className="metrics-grid">
         {[
           { label: '总交易', value: `${stats?.totalTrades ?? 0} 笔`, tone: 'neutral' as const, detail: '样本总量' },
@@ -83,19 +51,19 @@ export default function Analytics() {
       <div className="card card--feature">
         <div className="card__header">
           <div>
-            <p className="card__kicker">Capital Path</p>
+            <p className="card__kicker">Equity Curve</p>
             <h3 className="card__title card__title--large">权益曲线</h3>
           </div>
           <span className="card__meta">红色虚线 = 最大回撤点</span>
         </div>
-        <EquityCurve data={equityCurve} />
+        <EquityCurve data={equityCurve} mode="amount" variant="paper" />
       </div>
 
       <div className="grid-2">
         <div className="card">
           <div className="card__header">
             <div>
-              <p className="card__kicker">Win Profile</p>
+              <p className="card__kicker">Win/Loss Profile</p>
               <h3 className="card__title">胜率与盈亏结构</h3>
             </div>
           </div>
@@ -123,7 +91,7 @@ export default function Analytics() {
         <div className="card">
           <div className="card__header">
             <div>
-              <p className="card__kicker">Rhythm</p>
+              <p className="card__kicker">Daily P&L</p>
               <h3 className="card__title">每日盈亏</h3>
             </div>
           </div>
@@ -135,7 +103,7 @@ export default function Analytics() {
         <div className="card">
           <div className="card__header">
             <div>
-              <p className="card__kicker">Risk Pressure</p>
+              <p className="card__kicker">Drawdown</p>
               <h3 className="card__title">回撤走势</h3>
             </div>
           </div>
@@ -145,7 +113,7 @@ export default function Analytics() {
         <div className="card">
           <div className="card__header">
             <div>
-              <p className="card__kicker">Distribution</p>
+              <p className="card__kicker">P&L Distribution</p>
               <h3 className="card__title">盈亏分布</h3>
             </div>
           </div>
@@ -167,12 +135,12 @@ export default function Analytics() {
       <div className="card">
         <div className="card__header">
           <div>
-            <p className="card__kicker">Execution Map</p>
+            <p className="card__kicker">Trade Scatter</p>
             <h3 className="card__title">交易散点图</h3>
           </div>
           <span className="card__meta">每笔交易盈亏分布</span>
         </div>
-        <TradeScatter trades={scatterTrades} />
+        <TradeScatter trades={tradeScatter} />
       </div>
     </div>
   );

@@ -98,6 +98,15 @@ export function buildAnalyticsPayload(
     tradeCount: hourMap.get(hour)?.tradeCount ?? 0,
   }));
 
+  const tradeScatter = trades
+    .filter((trade) => trade.entry_time)
+    .map((trade) => ({
+      entryTime: trade.entry_time as string,
+      netPnl: round2(trade.net_pnl),
+      qty: trade.qty,
+      direction: trade.direction ?? 'unknown',
+    }));
+
   const { currentStreak, longestWinStreak, longestLossStreak } = calcStreaks(trades);
 
   return {
@@ -125,6 +134,7 @@ export function buildAnalyticsPayload(
     },
     pnlDistribution,
     timeHeatmap,
+    tradeScatter,
     streaks: {
       current: currentStreak,
       longestWin: longestWinStreak,

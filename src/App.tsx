@@ -1,4 +1,5 @@
-import { Suspense, lazy, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
+import { api } from './api/client';
 import { TabNav } from './components/layout/TabNav';
 import type { TabId } from './types';
 
@@ -8,31 +9,26 @@ const Analytics = lazy(() => import('./pages/Analytics'));
 const Review    = lazy(() => import('./pages/Review'));
 const Settings  = lazy(() => import('./pages/Settings'));
 
-const TAB_META: Record<TabId, { eyebrow: string; title: string; description: string }> = {
+const TAB_META: Record<TabId, { eyebrow: string; title: string }> = {
   overview: {
-    eyebrow: 'Strategic Board',
-    title: '账户总览',
-    description: '把盈亏、回撤与纪律信号压缩成一张更专业的复盘总台。',
+    eyebrow: 'Overview',
+    title: '概览',
   },
   journal: {
-    eyebrow: 'Trading Log',
+    eyebrow: 'Journal',
     title: '交易日志',
-    description: '按交易日归档成交、配对交易与盘中记录，保持原始证据完整。',
   },
   analytics: {
-    eyebrow: 'Pattern Lab',
+    eyebrow: 'Analytics',
     title: '图表分析',
-    description: '从权益曲线、分布、回撤和时段行为里提取稳定优势与失真区域。',
   },
   review: {
-    eyebrow: 'Review Desk',
+    eyebrow: 'Review',
     title: '复盘工作台',
-    description: '把当日情绪、执行质量和规则偏差放到同一套复盘框架里。',
   },
   settings: {
-    eyebrow: 'Control Panel',
+    eyebrow: 'Settings',
     title: '系统设置',
-    description: '管理数据资产、导出记录，并保持整个复盘系统可回溯。',
   },
 };
 
@@ -40,9 +36,24 @@ function PageLoader() {
   return <div className="page-loader">加载中...</div>;
 }
 
+function formatReportDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabId>('overview');
+  const [tradingDays, setTradingDays] = useState<number | null>(null);
   const meta = TAB_META[activeTab];
+  const reportDate = formatReportDate(new Date());
+
+  useEffect(() => {
+    api.getSessions()
+      .then((sessionList) => setTradingDays(sessionList.length))
+      .catch(() => setTradingDays(null));
+  }, []);
 
   return (
     <div className="app-shell">
@@ -55,19 +66,37 @@ export default function App() {
         <header className="shell-topbar">
           <div className="shell-topbar__meta">
             <p className="shell-topbar__eyebrow">{meta.eyebrow}</p>
-            <div className="shell-topbar__title">{meta.title}</div>
-            <p>{meta.description}</p>
+            <h1 className="shell-topbar__title">{meta.title}</h1>
           </div>
           <div className="shell-status">
             <div className="shell-status__tile">
-              <span>模式</span>
-              <strong>Ink Review OS</strong>
+              <span>报告日期</span>
+              <strong>{reportDate}</strong>
             </div>
             <div className="shell-status__tile">
-              <span>定位</span>
-              <strong>Trading Playback</strong>
+              <span>交易天数</span>
+              <strong>{tradingDays != null ? `${tradingDays} 天` : '—'}</strong>
             </div>
-            <div className="shell-status__stamp">RV</div>
+            <div className="shell-status__stamp" aria-hidden="true">
+              <svg viewBox="0 0 24 24" className="shell-status__icon">
+                <path
+                  d="M4 18.5h16M6 15l3.5-4 3 2.5 5-6"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M15.5 7.5H18v2.5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </div>
           </div>
         </header>
         <section className="shell-stage">

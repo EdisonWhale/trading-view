@@ -8,6 +8,7 @@ import type { AnalyticsData, SessionSummary } from '../types';
 export default function Overview() {
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [curveMode, setCurveMode] = useState<'amount' | 'percent'>('amount');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -24,7 +25,7 @@ export default function Overview() {
 
   const stats = analytics?.tradeStats;
   const equityData = analytics?.equityCurve ?? [];
-  const recentSessions = sessions.slice(-5).reverse();
+  const recentSessions = sessions.slice(0, 5);
   const totalNetPnl = equityData.reduce((sum, point) => sum + point.netPnl, 0);
   const hasData = sessions.length > 0 || equityData.length > 0;
 
@@ -61,27 +62,45 @@ export default function Overview() {
 
   return (
     <div className="page-stack">
-      <section className="page-band">
-        <div className="page-band__copy">
-          <p className="page-band__eyebrow">Strategic Overview</p>
-          <h2 className="page-band__title">把盈亏、回撤和执行质量收敛到一张更安静的交易总览里</h2>
-          <p className="page-band__text">
-            优秀的复盘首页不该只是堆统计卡片。它应该先告诉你资金曲线是否健康、最近几天是否在偏离优势区间，以及下一次该把注意力放在哪里。
-          </p>
+      <section className="page-band page-band--overview">
+        <div className="overview-hero__header">
+          <div>
+            <p className="page-band__eyebrow">Overview</p>
+            <h2 className="page-band__title">账户总览</h2>
+          </div>
+          {hasData && (
+            <div className="chart-toggle" role="tablist" aria-label="权益曲线显示方式">
+              <button
+                type="button"
+                className={`chart-toggle__button ${curveMode === 'amount' ? 'chart-toggle__button--active' : ''}`}
+                onClick={() => setCurveMode('amount')}
+              >
+                金额
+              </button>
+              <button
+                type="button"
+                className={`chart-toggle__button ${curveMode === 'percent' ? 'chart-toggle__button--active' : ''}`}
+                onClick={() => setCurveMode('percent')}
+              >
+                百分比
+              </button>
+            </div>
+          )}
         </div>
-        <div className="page-band__aside">
+        <div className="overview-hero__chart">
+          {hasData ? (
+            <EquityCurve data={equityData} mode={curveMode} variant="paper" />
+          ) : null}
+        </div>
+        <div className="page-band__aside page-band__aside--overview">
           <div className="ink-callout">
-            <span>账户状态</span>
-            <strong>{hasData ? '已建立可复盘轨迹' : '等待第一份交易证据'}</strong>
-            <p>
-              {hasData
-                ? `当前共 ${sessions.length} 个交易日，最近一次记录为 ${recentSessions[0]?.date ?? '—'}。`
-                : '先导入一份 NinjaTrader 日结单，让界面从空白纸面进入可分析状态。'}
-            </p>
+            <span>样本状态</span>
+            <strong>{hasData ? '已有可复盘样本' : '等待第一份交易记录'}</strong>
+            {hasData ? `当前共 ${sessions.length} 个交易日，最近一次记录为 ${recentSessions[0]?.date ?? '—'}。` : '导入后显示。'}
           </div>
           <div className="signal-stack">
             <div className="signal-chip">
-              <span>轨迹</span>
+              <span>交易天数</span>
               <strong>{sessions.length} 日</strong>
             </div>
             <div className="signal-chip">
@@ -110,76 +129,63 @@ export default function Overview() {
 
       {hasData ? (
         <div className="overview-grid">
-          <article className="card card--feature">
+          <article className="card">
             <div className="card__header">
               <div>
-                <p className="card__kicker">Capital Path</p>
-                <h3 className="card__title card__title--large">权益曲线</h3>
+                <p className="card__kicker">Summary</p>
+                <h3 className="card__title">当前判断</h3>
               </div>
-              <span className="card__meta">{equityData.length} 个数据点</span>
             </div>
-            <EquityCurve data={equityData} />
+            <div className="insight-list">
+              <div className="insight-row">
+                <span>账户动量</span>
+                <strong className={totalNetPnl >= 0 ? 'tone-profit' : 'tone-loss'}>
+                  {totalNetPnl >= 0 ? '延续盈利区间' : '需要压缩回撤'}
+                </strong>
+              </div>
+              <div className="insight-row">
+                <span>近期稳定性</span>
+                <strong>{recentSessions.length >= 3 ? '具备连续样本' : '样本仍然偏少'}</strong>
+              </div>
+              <div className="insight-row">
+                <span>最强观察点</span>
+                <strong>{stats?.maxDrawdownDate ? `关注 ${stats.maxDrawdownDate} 附近回撤` : '先建立连续记录'}</strong>
+              </div>
+            </div>
           </article>
 
-          <div className="stack-grid">
-            <article className="card">
-              <div className="card__header">
-                <div>
-                  <p className="card__kicker">Short Read</p>
-                  <h3 className="card__title">当前判断</h3>
-                </div>
+          <article className="card">
+            <div className="card__header">
+              <div>
+                <p className="card__kicker">Recent Sessions</p>
+                <h3 className="card__title">最近交易日</h3>
               </div>
-              <div className="insight-list">
-                <div className="insight-row">
-                  <span>账户动量</span>
-                  <strong className={totalNetPnl >= 0 ? 'tone-profit' : 'tone-loss'}>
-                    {totalNetPnl >= 0 ? '延续盈利区间' : '需要压缩回撤'}
-                  </strong>
-                </div>
-                <div className="insight-row">
-                  <span>近期稳定性</span>
-                  <strong>{recentSessions.length >= 3 ? '具备连续样本' : '样本仍然偏少'}</strong>
-                </div>
-                <div className="insight-row">
-                  <span>最强观察点</span>
-                  <strong>{stats?.maxDrawdownDate ? `关注 ${stats.maxDrawdownDate} 附近回撤` : '先建立连续记录'}</strong>
-                </div>
-              </div>
-            </article>
-
-            <article className="card">
-              <div className="card__header">
-                <div>
-                  <p className="card__kicker">Recent Tape</p>
-                  <h3 className="card__title">最近交易日</h3>
-                </div>
-              </div>
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>日期</th>
-                      <th>合约</th>
-                      <th>净盈亏</th>
-                      <th>交易笔数</th>
+            </div>
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>日期</th>
+                    <th>合约</th>
+                    <th>净盈亏</th>
+                    <th>交易笔数</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentSessions.map((session) => (
+                    <tr key={session.date}>
+                      <td className="mono-cell">{formatSessionDate(session.date)}</td>
+                      <td>{session.instrument}</td>
+                      <td className={session.netPnl >= 0 ? 'tone-profit mono-cell' : 'tone-loss mono-cell'}>
+                        {formatSignedCurrency(session.netPnl)}
+                      </td>
+                      <td>{session.tradeCount}</td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {recentSessions.map((session) => (
-                      <tr key={session.date}>
-                        <td className="mono-cell">{formatSessionDate(session.date)}</td>
-                        <td>{session.instrument}</td>
-                        <td className={session.netPnl >= 0 ? 'tone-profit mono-cell' : 'tone-loss mono-cell'}>
-                          {formatSignedCurrency(session.netPnl)}
-                        </td>
-                        <td>{session.tradeCount}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </article>
-          </div>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </article>
         </div>
       ) : (
         <section className="empty-state empty-state--hero">

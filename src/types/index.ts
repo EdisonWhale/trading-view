@@ -74,6 +74,7 @@ export interface SessionDetail {
 export interface AnalyticsData {
   equityCurve: Array<{ date: string; balance: number; netPnl: number }>;
   dailyPnl: Array<{ date: string; netPnl: number }>;
+  tradeScatter: Array<{ entryTime: string; netPnl: number; qty: number; direction: string }>;
   tradeStats: {
     totalTrades: number;
     wins: number;

@@ -27,23 +27,6 @@ export default function Review() {
 
   return (
     <div className="page-stack">
-      <section className="page-band">
-        <div className="page-band__copy">
-          <p className="page-band__eyebrow">Review Desk</p>
-          <h2 className="page-band__title">把当天的情绪、执行和规则偏差关进同一张复盘桌面</h2>
-          <p className="page-band__text">
-            这个页面不再像附属表单，而是整个系统的主场。左边是日期档案，右边是当日表现、执行质量和明日焦点。
-          </p>
-        </div>
-        <div className="page-band__aside">
-          <div className="ink-callout">
-            <span>复盘目标</span>
-            <strong>{sessions.length > 0 ? '形成连续反馈回路' : '等待第一份复盘样本'}</strong>
-            <p>你的复盘应该越来越像交易系统的一部分，而不是事后补记。</p>
-          </div>
-        </div>
-      </section>
-
       <div className="workspace-grid workspace-grid--review">
         <aside className="session-rail">
           <div className="section-heading">

@@ -46,11 +46,8 @@ export default function Settings() {
     <div className="page-stack">
       <section className="page-band">
         <div className="page-band__copy">
-          <p className="page-band__eyebrow">Control Panel</p>
-          <h2 className="page-band__title">把数据资产和系统信息留在一个克制的控制面板里</h2>
-          <p className="page-band__text">
-            设置页不需要花哨，但必须清晰。导出、删除、查看系统组成，都应该像同一套交易工具的一部分。
-          </p>
+          <p className="page-band__eyebrow">Settings</p>
+          <h2 className="page-band__title">系统设置</h2>
         </div>
       </section>
 
