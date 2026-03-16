@@ -58,30 +58,13 @@ export default function Journal() {
 
   return (
     <div className="page-stack">
-      <section className="page-band">
-        <div className="page-band__copy">
-          <p className="page-band__eyebrow">Trading Log</p>
-          <h2 className="page-band__title">先留原始证据，再做高质量判断</h2>
-          <p className="page-band__text">
-            交易日志页是整个系统的证据层。导入 PDF、查看原始成交、阅读配对交易，再把复盘备注写回同一天，信息就不会在不同页面里漂移。
-          </p>
-        </div>
-        <div className="page-band__aside">
-          <div className="ink-callout">
-            <span>日志节奏</span>
-            <strong>{sessions.length > 0 ? `已归档 ${sessions.length} 个交易日` : '等待导入首个交易日'}</strong>
-            <p>左侧保留按日期排列的原始记录，右侧专注当前交易日的上下文。</p>
-          </div>
-        </div>
-      </section>
-
       <div className="workspace-grid">
         <aside className="session-rail">
           <PdfUpload onSuccess={handleImport} />
 
           <div className="section-heading">
             <p className="card__kicker">Session Archive</p>
-            <h3>交易日志</h3>
+            <h3>归档交易日</h3>
           </div>
 
           {sessions.length === 0 ? (

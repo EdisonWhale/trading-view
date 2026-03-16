@@ -20,11 +20,8 @@ export function TabNav({ active, onChange }: Props) {
         <div className="tab-nav__seal">TR</div>
         <div>
           <span className="tab-nav__eyebrow">Trading Review</span>
-          <span className="tab-nav__title">交易复盘终端</span>
+          <span className="tab-nav__title">交易复盘</span>
         </div>
-      </div>
-      <div className="tab-nav__intro">
-        用更克制的界面读清楚账户、执行与规则，而不是被卡片噪音淹没。
       </div>
       <ul className="tab-nav__list">
         {TABS.map((tab) => (
@@ -43,10 +40,6 @@ export function TabNav({ active, onChange }: Props) {
           </li>
         ))}
       </ul>
-      <div className="tab-nav__footer">
-        <span>Rice Paper UI</span>
-        <strong>审美上收敛，判断上更锋利</strong>
-      </div>
     </nav>
   );
 }
