@@ -37,6 +37,7 @@ db.exec(`
     qty INTEGER,
     price REAL,
     order_id TEXT,
+    reason TEXT,
     FOREIGN KEY (session_date) REFERENCES sessions(date) ON DELETE CASCADE
   );
 
@@ -73,7 +74,28 @@ db.exec(`
     updated_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (session_date) REFERENCES sessions(date) ON DELETE CASCADE
   );
+
+  CREATE TABLE IF NOT EXISTS market_bars (
+    symbol TEXT NOT NULL,
+    timeframe TEXT NOT NULL,
+    bar_time TEXT NOT NULL,
+    open REAL NOT NULL,
+    high REAL NOT NULL,
+    low REAL NOT NULL,
+    close REAL NOT NULL,
+    volume REAL NOT NULL DEFAULT 0,
+    source TEXT NOT NULL,
+    PRIMARY KEY (symbol, timeframe, bar_time)
+  );
 `);
+
+try {
+  db.exec(`ALTER TABLE fills ADD COLUMN reason TEXT`);
+} catch (error) {
+  if (!(error instanceof Error) || !/duplicate column name/i.test(error.message)) {
+    throw error;
+  }
+}
 
 // ─── Type definitions ────────────────────────────────────────────────────────
 
@@ -99,6 +121,7 @@ export interface FillRow {
   qty: number;
   price: number;
   order_id: string | null;
+  reason: string | null;
 }
 
 export interface TradeRow {
@@ -133,6 +156,18 @@ export interface JournalRow {
   updated_at: string;
 }
 
+export interface MarketBarRow {
+  symbol: string;
+  timeframe: string;
+  bar_time: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  source: string;
+}
+
 // ─── CRUD helpers ────────────────────────────────────────────────────────────
 
 const stmts = {
@@ -154,8 +189,8 @@ const stmts = {
   `),
 
   insertFill: db.prepare<Omit<FillRow, 'id'>>(`
-    INSERT INTO fills (session_date, timestamp, side, qty, price, order_id)
-    VALUES (@session_date, @timestamp, @side, @qty, @price, @order_id)
+    INSERT INTO fills (session_date, timestamp, side, qty, price, order_id, reason)
+    VALUES (@session_date, @timestamp, @side, @qty, @price, @order_id, @reason)
   `),
 
   insertTrade: db.prepare<Omit<TradeRow, 'id'>>(`
@@ -189,12 +224,28 @@ const stmts = {
     'SELECT * FROM fills WHERE session_date = @session_date ORDER BY timestamp ASC'
   ),
 
+  getFillsInRange: db.prepare<{ start: string; end: string }>(
+    `SELECT * FROM fills
+     WHERE timestamp IS NOT NULL
+       AND datetime(timestamp) >= datetime(@start)
+       AND datetime(timestamp) < datetime(@end)
+     ORDER BY timestamp ASC`
+  ),
+
   getTradesBySession: db.prepare<{ session_date: string }>(
     'SELECT * FROM trades WHERE session_date = @session_date ORDER BY entry_time ASC'
   ),
 
   getJournal: db.prepare<{ session_date: string }>(
     'SELECT * FROM journal_entries WHERE session_date = @session_date'
+  ),
+
+  getTradeById: db.prepare<{ id: number }>(
+    'SELECT * FROM trades WHERE id = @id'
+  ),
+
+  getFillById: db.prepare<{ id: number }>(
+    'SELECT * FROM fills WHERE id = @id'
   ),
 
   upsertJournal: db.prepare(`
@@ -220,6 +271,31 @@ const stmts = {
 
   updateTradeAnnotation: db.prepare<{ id: number; annotation: string | null }>(
     'UPDATE trades SET annotation = @annotation WHERE id = @id'
+  ),
+
+  updateFillReason: db.prepare<{ id: number; reason: string | null }>(
+    'UPDATE fills SET reason = @reason WHERE id = @id'
+  ),
+
+  upsertMarketBar: db.prepare<MarketBarRow>(`
+    INSERT INTO market_bars (symbol, timeframe, bar_time, open, high, low, close, volume, source)
+    VALUES (@symbol, @timeframe, @bar_time, @open, @high, @low, @close, @volume, @source)
+    ON CONFLICT(symbol, timeframe, bar_time) DO UPDATE SET
+      open = excluded.open,
+      high = excluded.high,
+      low = excluded.low,
+      close = excluded.close,
+      volume = excluded.volume,
+      source = excluded.source
+  `),
+
+  getMarketBarsInRange: db.prepare<{ symbol: string; timeframe: string; start: string; end: string }>(
+    `SELECT * FROM market_bars
+     WHERE symbol = @symbol
+       AND timeframe = @timeframe
+       AND bar_time >= @start
+       AND bar_time < @end
+     ORDER BY bar_time ASC`
   ),
 };
 
@@ -268,6 +344,37 @@ export function deleteSession(date: string): void {
 
 export function updateTradeAnnotation(id: number, annotation: string | null): void {
   stmts.updateTradeAnnotation.run({ id, annotation });
+}
+
+export function updateFillReason(id: number, reason: string | null): void {
+  stmts.updateFillReason.run({ id, reason });
+}
+
+export function getJournalBySession(date: string): JournalRow | undefined {
+  return stmts.getJournal.get({ session_date: date }) as JournalRow | undefined;
+}
+
+export function getTradeById(id: number): TradeRow | undefined {
+  return stmts.getTradeById.get({ id }) as TradeRow | undefined;
+}
+
+export function getFillById(id: number): FillRow | undefined {
+  return stmts.getFillById.get({ id }) as FillRow | undefined;
+}
+
+export function getFillsInRange(start: string, end: string): FillRow[] {
+  return stmts.getFillsInRange.all({ start, end }) as FillRow[];
+}
+
+export function upsertMarketBars(bars: MarketBarRow[]): void {
+  const transaction = db.transaction((items: MarketBarRow[]) => {
+    for (const bar of items) stmts.upsertMarketBar.run(bar);
+  });
+  transaction(bars);
+}
+
+export function getMarketBarsInRange(symbol: string, timeframe: string, start: string, end: string): MarketBarRow[] {
+  return stmts.getMarketBarsInRange.all({ symbol, timeframe, start, end }) as MarketBarRow[];
 }
 
 export function getAllSessionsForAnalytics(): SessionRow[] {
