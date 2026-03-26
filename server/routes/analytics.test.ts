@@ -173,4 +173,102 @@ describe('buildAnalyticsPayload', () => {
       { entryTime: '2026-03-13T14:04:39', netPnl: 60.68, qty: 1, direction: 'short', durationSeconds: 948 },
     ]);
   });
+
+  it('uses gross profitable trades for win rate and trading fees for fee totals', () => {
+    const payload = buildAnalyticsPayload(
+      [
+        {
+          date: '2026-03-10',
+          instrument: 'MESH6',
+          instrument_name: 'Micro E-mini S&P 500',
+          beginning_balance: 3000,
+          ending_balance: 3003.04,
+          gross_pnl: 12.5,
+          commissions: 9.46,
+          trading_fees: 5.46,
+          net_pnl: 3.04,
+          realized_net_pnl: 3.04,
+          open_trade_equity_change: 0,
+          ending_open_trade_equity: 0,
+          trade_count: 3,
+          created_at: '',
+          updated_at: '',
+        },
+        {
+          date: '2026-03-17',
+          instrument: 'MESH6',
+          instrument_name: 'Micro E-mini S&P 500',
+          beginning_balance: 4569.1,
+          ending_balance: 4200.73,
+          gross_pnl: -362,
+          commissions: 6.37,
+          trading_fees: 6.37,
+          net_pnl: -368.37,
+          realized_net_pnl: -579.62,
+          open_trade_equity_change: 211.25,
+          ending_open_trade_equity: 0,
+          trade_count: 4,
+          created_at: '',
+          updated_at: '',
+        },
+      ] as unknown as SessionRow[],
+      [
+        {
+          id: 1,
+          session_date: '2026-03-10',
+          instrument: 'MESH6',
+          direction: 'short',
+          entry_time: '2026-03-10T15:00:00',
+          entry_price: 0,
+          exit_time: '2026-03-10T15:05:00',
+          exit_price: 0,
+          qty: 1,
+          gross_pnl: 1.25,
+          commission: 1.82,
+          net_pnl: -0.57,
+          duration_seconds: 300,
+          annotation: null,
+        },
+        {
+          id: 2,
+          session_date: '2026-03-17',
+          instrument: 'MESH6',
+          direction: 'short',
+          entry_time: '2026-03-17T12:00:00',
+          entry_price: 0,
+          exit_time: '2026-03-17T12:05:00',
+          exit_price: 0,
+          qty: 1,
+          gross_pnl: 10,
+          commission: 1.82,
+          net_pnl: 8.18,
+          duration_seconds: 300,
+          annotation: null,
+        },
+        {
+          id: 3,
+          session_date: '2026-03-17',
+          instrument: 'MESH6',
+          direction: 'short',
+          entry_time: '2026-03-17T12:10:00',
+          entry_price: 0,
+          exit_time: '2026-03-17T12:20:00',
+          exit_price: 0,
+          qty: 1,
+          gross_pnl: -10,
+          commission: 1.82,
+          net_pnl: -11.82,
+          duration_seconds: 600,
+          annotation: null,
+        },
+      ],
+      5000,
+    );
+
+    expect(payload.tradeStats.totalTrades).toBe(3);
+    expect(payload.tradeStats.wins).toBe(2);
+    expect(payload.tradeStats.losses).toBe(1);
+    expect(payload.tradeStats.winRate).toBeCloseTo(66.67, 2);
+    expect(payload.tradeStats.totalCommissions).toBeCloseTo(11.83, 2);
+  });
 });

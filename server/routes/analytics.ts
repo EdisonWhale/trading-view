@@ -11,6 +11,14 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+function isWinningTrade(trade: TradeRow): boolean {
+  return trade.gross_pnl > 0;
+}
+
+function isLosingTrade(trade: TradeRow): boolean {
+  return trade.gross_pnl < 0;
+}
+
 /** Extract the hour (0–23) from an ISO-ish timestamp string */
 function extractHour(timestamp: string | null): number | null {
   if (!timestamp) return null;
@@ -48,8 +56,8 @@ export function buildAnalyticsPayload(
   });
 
   const totalTrades = trades.length;
-  const wins = trades.filter((t) => t.net_pnl > 0).length;
-  const losses = trades.filter((t) => t.net_pnl < 0).length;
+  const wins = trades.filter(isWinningTrade).length;
+  const losses = trades.filter(isLosingTrade).length;
   const breakeven = totalTrades - wins - losses;
   const winRate = totalTrades > 0 ? round2((wins / totalTrades) * 100) : 0;
 
@@ -59,8 +67,8 @@ export function buildAnalyticsPayload(
     grossPnl: round2(session.gross_pnl),
   }));
 
-  const winPnls = trades.filter((t) => t.net_pnl > 0).map((t) => t.net_pnl);
-  const lossPnls = trades.filter((t) => t.net_pnl < 0).map((t) => t.net_pnl);
+  const winPnls = trades.filter(isWinningTrade).map((t) => t.net_pnl);
+  const lossPnls = trades.filter(isLosingTrade).map((t) => t.net_pnl);
   const avgWin = winPnls.length > 0 ? round2(winPnls.reduce((sum, value) => sum + value, 0) / winPnls.length) : 0;
   const avgLoss = lossPnls.length > 0 ? round2(lossPnls.reduce((sum, value) => sum + value, 0) / lossPnls.length) : 0;
   const totalWinAmount = winPnls.reduce((sum, value) => sum + value, 0);
@@ -68,7 +76,10 @@ export function buildAnalyticsPayload(
   const profitFactor = totalLossAmount > 0 ? round2(totalWinAmount / totalLossAmount) : totalWinAmount > 0 ? Infinity : 0;
   const maxWin = winPnls.length > 0 ? round2(Math.max(...winPnls)) : 0;
   const maxLoss = lossPnls.length > 0 ? round2(Math.min(...lossPnls)) : 0;
-  const totalCommissions = round2(sessions.reduce((sum, s) => sum + (Number(s.commissions) || 0), 0));
+  const totalCommissions = round2(sessions.reduce(
+    (sum, s) => sum + (Number(s.trading_fees ?? s.commissions) || 0),
+    0,
+  ));
   const totalNetPnl = round2(sessions.reduce((sum, s) => sum + (Number(s.net_pnl) || 0), 0));
 
   let maxDrawdown = 0;
@@ -114,8 +125,8 @@ export function buildAnalyticsPayload(
 
   // ── Direction split stats ──────────────────────────────────────────────────
   function calcDirectionStats(subset: TradeRow[]) {
-    const w = subset.filter((t) => t.net_pnl > 0);
-    const l = subset.filter((t) => t.net_pnl < 0);
+    const w = subset.filter(isWinningTrade);
+    const l = subset.filter(isLosingTrade);
     const totalPnl = round2(subset.reduce((s, t) => s + t.net_pnl, 0));
     const winRate = subset.length > 0 ? round2((w.length / subset.length) * 100) : 0;
     const avgWin = w.length > 0 ? round2(w.reduce((s, t) => s + t.net_pnl, 0) / w.length) : 0;
@@ -134,8 +145,8 @@ export function buildAnalyticsPayload(
   };
 
   // ── Duration stats ─────────────────────────────────────────────────────────
-  const winTrades = trades.filter((t) => t.net_pnl > 0);
-  const lossTrades = trades.filter((t) => t.net_pnl < 0);
+  const winTrades = trades.filter(isWinningTrade);
+  const lossTrades = trades.filter(isLosingTrade);
   const allDurations = trades.map((t) => t.duration_seconds);
   const durationStats = {
     avgDuration:    trades.length > 0 ? round2(allDurations.reduce((s, v) => s + v, 0) / trades.length) : 0,
@@ -238,11 +249,11 @@ function calcStreaks(trades: TradeRow[]): {
   let currentLoss = 0;
 
   for (const trade of trades) {
-    if (trade.net_pnl > 0) {
+    if (isWinningTrade(trade)) {
       currentWin += 1;
       currentLoss = 0;
       if (currentWin > longestWinStreak) longestWinStreak = currentWin;
-    } else if (trade.net_pnl < 0) {
+    } else if (isLosingTrade(trade)) {
       currentLoss += 1;
       currentWin = 0;
       if (currentLoss > longestLossStreak) longestLossStreak = currentLoss;
@@ -256,9 +267,9 @@ function calcStreaks(trades: TradeRow[]): {
   const lastTrade = trades[trades.length - 1];
   let currentStreak: { type: 'win' | 'loss' | 'none'; count: number };
 
-  if (lastTrade.net_pnl > 0) {
+  if (isWinningTrade(lastTrade)) {
     currentStreak = { type: 'win', count: currentWin };
-  } else if (lastTrade.net_pnl < 0) {
+  } else if (isLosingTrade(lastTrade)) {
     currentStreak = { type: 'loss', count: currentLoss };
   } else {
     currentStreak = { type: 'none', count: 0 };
