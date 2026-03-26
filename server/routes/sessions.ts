@@ -14,7 +14,7 @@ import {
 } from '../db.js';
 import { parseNinjaTraderPDF } from '../parsers/ninjatrader.js';
 import { getSessionMarketData, type MarketTimeframe } from '../services/marketData.js';
-import type { FillRecord, TradeRecord } from '../parsers/ninjatrader.js';
+import type { FillRecord, OpenPositionRecord, TradeRecord } from '../parsers/ninjatrader.js';
 
 const router = Router();
 
@@ -73,6 +73,19 @@ router.post('/import', upload.single('pdf'), async (req: Request, res: Response)
       annotation: null,
     }));
 
+    const openPositionRows = result.openPositions.map((position: OpenPositionRecord) => ({
+      session_date: result.date,
+      instrument: position.instrument,
+      side: position.side,
+      qty: position.qty,
+      entry_time: position.entry_time,
+      entry_price: position.entry_price,
+      mark_time: position.mark_time,
+      mark_price: position.mark_price,
+      open_pnl: position.open_pnl,
+      order_id: position.order_id,
+    }));
+
     upsertSessionWithData(
       {
         date: result.date,
@@ -82,11 +95,16 @@ router.post('/import', upload.single('pdf'), async (req: Request, res: Response)
         ending_balance: result.endingBalance,
         gross_pnl: result.grossPnl,
         commissions: result.commissions,
+        trading_fees: result.tradingFees,
         net_pnl: result.netPnl,
+        realized_net_pnl: result.realizedNetPnl,
+        open_trade_equity_change: result.openTradeEquityChange,
+        ending_open_trade_equity: result.endingOpenTradeEquity,
         trade_count: result.trades.length,
       },
       fillRows,
-      tradeRows
+      tradeRows,
+      openPositionRows,
     );
 
     const detail = getSessionFull(result.date);

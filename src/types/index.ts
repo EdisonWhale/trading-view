@@ -9,6 +9,9 @@ export interface Session {
   grossPnl: number;
   commissions: number;
   netPnl: number;
+  realizedNetPnl: number;
+  openTradeEquityChange: number;
+  endingOpenTradeEquity: number;
   tradeCount: number;
   createdAt: string;
   updatedAt: string;
@@ -50,6 +53,20 @@ export interface Trade {
   annotation: string | null;
 }
 
+export interface OpenPosition {
+  id: number;
+  sessionDate: string;
+  instrument: string;
+  side: 'long' | 'short';
+  qty: number;
+  entryTime: string;
+  entryPrice: number;
+  markTime: string;
+  markPrice: number;
+  openPnl: number;
+  orderId: string;
+}
+
 export interface JournalEntry {
   sessionDate: string;
   emotionScore: number;      // 1-10
@@ -69,6 +86,7 @@ export interface SessionDetail {
   session: Session;
   fills: Fill[];
   trades: Trade[];
+  openPositions: OpenPosition[];
   journal: JournalEntry | null;
 }
 

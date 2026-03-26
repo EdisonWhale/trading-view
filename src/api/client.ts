@@ -70,6 +70,22 @@ export function normalizeTrade(payload: any): import('../types').Trade {
   };
 }
 
+function normalizeOpenPosition(payload: any): import('../types').OpenPosition {
+  return {
+    id: payload.id,
+    sessionDate: payload.session_date ?? payload.sessionDate,
+    instrument: payload.instrument ?? '',
+    side: payload.side,
+    qty: Number(payload.qty ?? 0),
+    entryTime: payload.entry_time ?? payload.entryTime ?? '',
+    entryPrice: Number(payload.entry_price ?? payload.entryPrice ?? 0),
+    markTime: payload.mark_time ?? payload.markTime ?? '',
+    markPrice: Number(payload.mark_price ?? payload.markPrice ?? 0),
+    openPnl: Number(payload.open_pnl ?? payload.openPnl ?? 0),
+    orderId: payload.order_id ?? payload.orderId ?? '',
+  };
+}
+
 function normalizeFill(payload: any): import('../types').Fill {
   return {
     id: payload.id,
@@ -94,12 +110,16 @@ export function normalizeSessionDetail(payload: any): import('../types').Session
       grossPnl: Number(payload.session.gross_pnl ?? payload.session.grossPnl ?? 0),
       commissions: Number(payload.session.commissions ?? 0),
       netPnl: Number(payload.session.net_pnl ?? payload.session.netPnl ?? 0),
+      realizedNetPnl: Number(payload.session.realized_net_pnl ?? payload.session.realizedNetPnl ?? 0),
+      openTradeEquityChange: Number(payload.session.open_trade_equity_change ?? payload.session.openTradeEquityChange ?? 0),
+      endingOpenTradeEquity: Number(payload.session.ending_open_trade_equity ?? payload.session.endingOpenTradeEquity ?? 0),
       tradeCount: Number(payload.session.trade_count ?? payload.session.tradeCount ?? 0),
       createdAt: payload.session.created_at ?? payload.session.createdAt ?? '',
       updatedAt: payload.session.updated_at ?? payload.session.updatedAt ?? '',
     },
     fills: (payload.fills ?? []).map(normalizeFill),
     trades: (payload.trades ?? []).map(normalizeTrade),
+    openPositions: (payload.open_positions ?? payload.openPositions ?? []).map(normalizeOpenPosition),
     journal: payload.journal ? normalizeJournalEntry(payload.journal) : null,
   };
 }

@@ -59,6 +59,9 @@ const sessionDetail = {
     gross_pnl: -432.5,
     commissions: 14.56,
     net_pnl: -447.06,
+    realized_net_pnl: -447.06,
+    open_trade_equity_change: 0,
+    ending_open_trade_equity: 0,
     trade_count: 8,
     created_at: '2026-03-15T00:00:00Z',
     updated_at: '2026-03-15T00:00:00Z',
@@ -92,6 +95,21 @@ const sessionDetail = {
       annotation: 'Fade opening pop',
     },
   ],
+  open_positions: [
+    {
+      id: 11,
+      session_date: '2026-03-13',
+      instrument: 'MESH6',
+      side: 'short',
+      qty: 1,
+      entry_time: '2026-03-13T20:41:35Z',
+      entry_price: 6634.5,
+      mark_time: '2026-03-13T20:59:59Z',
+      mark_price: 6640.25,
+      open_pnl: -28.75,
+      order_id: 'abc-open',
+    },
+  ],
   journal: {
     session_date: '2026-03-13',
     emotion_score: 7,
@@ -123,6 +141,9 @@ describe('sessions routes', () => {
       grossPnl: -432.5,
       commissions: 14.56,
       netPnl: -447.06,
+      realizedNetPnl: -447.06,
+      openTradeEquityChange: 0,
+      endingOpenTradeEquity: 0,
       fills: sessionDetail.fills.map((fill) => ({
         id: fill.id,
         session_date: fill.session_date,
@@ -148,6 +169,18 @@ describe('sessions routes', () => {
         duration_seconds: trade.duration_seconds,
         annotation: trade.annotation,
       })),
+      openPositions: sessionDetail.open_positions.map((position) => ({
+        session_date: position.session_date,
+        instrument: position.instrument,
+        side: position.side,
+        qty: position.qty,
+        entry_time: position.entry_time,
+        entry_price: position.entry_price,
+        mark_time: position.mark_time,
+        mark_price: position.mark_price,
+        open_pnl: position.open_pnl,
+        order_id: position.order_id,
+      })),
     });
     mocks.getSessionFull.mockReturnValue(sessionDetail);
 
@@ -172,7 +205,18 @@ describe('sessions routes', () => {
       },
       fills: expect.any(Array),
       trades: expect.any(Array),
+      open_positions: expect.any(Array),
     });
+    expect(mocks.upsertSessionWithData).toHaveBeenCalledWith(
+      expect.objectContaining({
+        realized_net_pnl: -447.06,
+        open_trade_equity_change: 0,
+        ending_open_trade_equity: 0,
+      }),
+      expect.any(Array),
+      expect.any(Array),
+      expect.any(Array),
+    );
   });
 
   it('returns the saved journal entry after patching a session journal', async () => {

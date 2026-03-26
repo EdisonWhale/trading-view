@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { FillTable } from '../components/journal/FillTable';
+import { OpenPositionList } from '../components/journal/OpenPositionList';
 import { TradeList } from '../components/journal/TradeList';
 import { TradeMiniChart } from '../components/journal/TradeMiniChart';
 import { JournalForm } from '../components/journal/JournalForm';
@@ -8,7 +9,7 @@ import { PdfUpload } from '../components/journal/PdfUpload';
 import { formatCurrency, formatSignedCurrency, formatSessionDate } from '../lib/format';
 import type { AnalyticsData, Fill, SessionDetail, SessionSummary, Trade } from '../types';
 
-type Section = 'fills' | 'trades' | 'journal';
+type Section = 'fills' | 'trades' | 'positions' | 'journal';
 
 export default function Journal() {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
@@ -62,6 +63,7 @@ export default function Journal() {
   };
 
   const session = detail?.session;
+  const dayOpenPositions = detail?.openPositions ?? [];
 
   const stats = analytics?.tradeStats;
 
@@ -74,6 +76,12 @@ export default function Journal() {
   const dayAvgLoss = dayLosses.length > 0 ? dayLosses.reduce((s, t) => s + t.netPnl, 0) / dayLosses.length : null;
   const dayBestTrade = dayTrades.length > 0 ? Math.max(...dayTrades.map((t) => t.netPnl)) : null;
   const dayWorstTrade = dayTrades.length > 0 ? Math.min(...dayTrades.map((t) => t.netPnl)) : null;
+
+  useEffect(() => {
+    if (activeSection === 'positions' && dayOpenPositions.length === 0) {
+      setActiveSection('trades');
+    }
+  }, [activeSection, dayOpenPositions.length]);
 
   return (
     <div className="page-stack">
@@ -208,8 +216,26 @@ export default function Journal() {
                     <strong>-${session.commissions.toFixed(2)}</strong>
                   </div>
                   <div className="signal-chip">
+                    <span>已实现净额</span>
+                    <strong className={session.realizedNetPnl >= 0 ? 'tone-profit' : 'tone-loss'}>
+                      {formatSignedCurrency(session.realizedNetPnl)}
+                    </strong>
+                  </div>
+                  {session.openTradeEquityChange !== 0 && (
+                    <div className="signal-chip">
+                      <span>OTE 变动</span>
+                      <strong className={session.openTradeEquityChange >= 0 ? 'tone-profit' : 'tone-loss'}>
+                        {formatSignedCurrency(session.openTradeEquityChange)}
+                      </strong>
+                    </div>
+                  )}
+                  <div className="signal-chip">
                     <span>交易笔数</span>
                     <strong>{session.tradeCount} 笔</strong>
+                  </div>
+                  <div className="signal-chip">
+                    <span>EOD 余额</span>
+                    <strong>{formatCurrency(session.endingBalance)}</strong>
                   </div>
                   {dayWinRate !== null && (
                     <div className="signal-chip">
@@ -261,7 +287,12 @@ export default function Journal() {
               )}
 
               <div className="segmented">
-                {([['trades', `配对交易 (${detail.trades.length})`], ['fills', `原始成交 (${detail.fills.length})`], ['journal', '复盘日志']] as [Section, string][]).map(([id, label]) => (
+                {([
+                  ['trades', `配对交易 (${detail.trades.length})`],
+                  ...(dayOpenPositions.length > 0 ? [['positions', `未平仓持仓 (${dayOpenPositions.length})`]] : []),
+                  ['fills', `原始成交 (${detail.fills.length})`],
+                  ['journal', '复盘日志'],
+                ] as [Section, string][]).map(([id, label]) => (
                   <button
                     key={id}
                     type="button"
@@ -276,6 +307,7 @@ export default function Journal() {
               <div className="card">
                 {activeSection === 'fills' && <FillTable fills={detail.fills} onUpdate={handleFillUpdate} />}
                 {activeSection === 'trades' && <TradeList trades={detail.trades} onUpdate={handleTradeUpdate} />}
+                {activeSection === 'positions' && <OpenPositionList positions={dayOpenPositions} />}
                 {activeSection === 'journal' && (
                   <JournalForm
                     sessionDate={session.date}

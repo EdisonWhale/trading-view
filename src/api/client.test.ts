@@ -33,6 +33,9 @@ describe('session api normalizers', () => {
         gross_pnl: -432.5,
         commissions: 14.56,
         net_pnl: -447.06,
+        realized_net_pnl: -447.06,
+        open_trade_equity_change: 0,
+        ending_open_trade_equity: 0,
         trade_count: 8,
         created_at: '2026-03-15T00:00:00',
         updated_at: '2026-03-15T00:00:00',
@@ -66,6 +69,21 @@ describe('session api normalizers', () => {
           annotation: null,
         },
       ],
+      open_positions: [
+        {
+          id: 9,
+          session_date: '2026-03-13',
+          instrument: 'MESH6',
+          side: 'short',
+          qty: 1,
+          entry_time: '2026-03-13T20:41:35',
+          entry_price: 6634.5,
+          mark_time: '2026-03-13T20:59:59',
+          mark_price: 6640.25,
+          open_pnl: -28.75,
+          order_id: '1248394071',
+        },
+      ],
       journal: {
         session_date: '2026-03-13',
         emotion_score: 7,
@@ -84,8 +102,10 @@ describe('session api normalizers', () => {
 
     expect(detail.session.tradeCount).toBe(8);
     expect(detail.session.netPnl).toBe(-447.06);
+    expect((detail.session as any).realizedNetPnl).toBe(-447.06);
     expect(detail.fills[0].orderId).toBe('1246790783');
     expect(detail.trades[0].entryTime).toBe('2026-03-13T14:04:39');
+    expect((detail as any).openPositions[0].openPnl).toBe(-28.75);
     expect(detail.journal?.emotionScore).toBe(7);
     expect(detail.journal?.whatWorked).toEqual(['discipline']);
     expect(detail.journal?.ruleBreaks).toEqual(['none']);
