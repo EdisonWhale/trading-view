@@ -4,6 +4,7 @@ import Analytics from './Analytics';
 vi.mock('../api/client', () => ({
   api: {
     getAnalytics: vi.fn(),
+    getSessions: vi.fn().mockResolvedValue([]),
   },
 }));
 

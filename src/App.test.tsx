@@ -2,8 +2,17 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from './App';
 
+const apiMocks = vi.hoisted(() => ({
+  getAuthSession: vi.fn().mockResolvedValue({ authenticated: true }),
+  login: vi.fn().mockResolvedValue({ authenticated: true }),
+  logout: vi.fn().mockResolvedValue({ authenticated: false }),
+}));
+
 vi.mock('./api/client', () => ({
   api: {
+    getAuthSession: apiMocks.getAuthSession,
+    login: apiMocks.login,
+    logout: apiMocks.logout,
     getSessions: vi.fn().mockResolvedValue([
       { date: '2026-03-14', instrument: 'MES', instrumentName: 'MES', netPnl: 20, tradeCount: 2 },
       { date: '2026-03-13', instrument: 'MES', instrumentName: 'MES', netPnl: -10, tradeCount: 3 },
@@ -30,6 +39,12 @@ vi.mock('./pages/Settings', () => ({
 }));
 
 describe('App', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    apiMocks.getAuthSession.mockResolvedValue({ authenticated: true });
+    apiMocks.login.mockResolvedValue({ authenticated: true });
+  });
+
   it('renders the tab navigation', async () => {
     render(<App />);
     expect(await screen.findByRole('heading', { level: 1, name: '概览' })).toBeInTheDocument();
@@ -68,6 +83,7 @@ describe('App', () => {
     const user = userEvent.setup();
     render(<App />);
 
+    expect(await screen.findByRole('heading', { level: 1, name: '概览' })).toBeInTheDocument();
     // Click the 交易日志 tab button in the nav
     const navButtons = screen.getAllByText('交易日志');
     // The nav button is the one inside tab-nav
@@ -80,6 +96,7 @@ describe('App', () => {
     const user = userEvent.setup();
     render(<App />);
 
+    expect(await screen.findByRole('heading', { level: 1, name: '概览' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /图表分析/ }));
     expect(await screen.findByRole('heading', { level: 1, name: '图表分析' })).toBeInTheDocument();
   });
@@ -88,7 +105,24 @@ describe('App', () => {
     const user = userEvent.setup();
     render(<App />);
 
+    expect(await screen.findByRole('heading', { level: 1, name: '概览' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /设置/ }));
     expect(await screen.findByRole('heading', { level: 1, name: '系统设置' })).toBeInTheDocument();
+  });
+
+  it('shows the password screen when unauthenticated and enters after login', async () => {
+    const user = userEvent.setup();
+    apiMocks.getAuthSession.mockResolvedValueOnce({ authenticated: false });
+    const testPassword = 'review-password';
+
+    render(<App />);
+
+    expect(await screen.findByLabelText('访问密码')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: '进入工作台' })).toBeInTheDocument();
+    await user.type(screen.getByLabelText('访问密码'), testPassword);
+    await user.click(screen.getByRole('button', { name: '进入工作台' }));
+
+    expect(apiMocks.login).toHaveBeenCalledWith(testPassword);
+    expect(await screen.findByRole('heading', { level: 1, name: '概览' })).toBeInTheDocument();
   });
 });

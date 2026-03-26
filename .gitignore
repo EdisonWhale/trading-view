@@ -11,6 +11,7 @@ coverage/
 .env.*
 !.env.example
 !.env.sample
+deploy/trading-review.service
 .DS_Store
 .vscode/
 .idea/

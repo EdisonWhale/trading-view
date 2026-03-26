@@ -1,0 +1,26 @@
+# edisonwhale.com 与 www.edisonwhale.com 反代到 3000 端口，自动 HTTPS
+edisonwhale.com, www.edisonwhale.com {
+	reverse_proxy localhost:3000
+}
+
+study.edisonwhale.com, www.study.edisonwhale.com {
+	reverse_proxy 127.0.0.1:3001
+}
+
+review.edisonwhale.com {
+	reverse_proxy 127.0.0.1:3002
+}
+
+# 默认站点（其他请求）
+:80 {
+	handle /api/* {
+		reverse_proxy 127.0.0.1:7891
+	}
+
+	root * /usr/share/caddy
+	file_server
+}
+
+control.edisonwhale.com {
+	reverse_proxy 127.0.0.1:18789
+}
