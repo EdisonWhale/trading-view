@@ -3,6 +3,7 @@ import { api } from '../api/client';
 import { MetricCard } from '../components/MetricCard';
 import { EquityCurve } from '../components/charts/EquityCurve';
 import { DailyPnLBar } from '../components/charts/DailyPnLBar';
+import { PnLCalendar } from '../components/charts/PnLCalendar';
 import { PnLDistribution } from '../components/charts/PnLDistribution';
 import { WinRateDonut } from '../components/charts/WinRateDonut';
 import { TimeHeatmap } from '../components/charts/TimeHeatmap';
@@ -10,7 +11,7 @@ import { DrawdownChart } from '../components/charts/DrawdownChart';
 import { TradeScatter } from '../components/charts/TradeScatter';
 import { DurationScatter } from '../components/charts/DurationScatter';
 import { formatCurrency, formatSignedCurrency } from '../lib/format';
-import type { AnalyticsData } from '../types';
+import type { AnalyticsData, SessionSummary } from '../types';
 
 function formatDur(seconds: number): string {
   if (seconds <= 0) return '—';
@@ -21,11 +22,18 @@ function formatDur(seconds: number): string {
 
 export default function Analytics() {
   const [data, setData] = useState<AnalyticsData | null>(null);
+  const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [curveMode, setCurveMode] = useState<'amount' | 'percent'>('amount');
 
   useEffect(() => {
-    api.getAnalytics().then(setData).catch(() => {}).finally(() => setLoading(false));
+    Promise.all([api.getAnalytics(), api.getSessions()])
+      .then(([analyticsData, sessionData]) => {
+        setData(analyticsData);
+        setSessions(sessionData);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
   if (loading) return <div className="page-loader">加载中...</div>;
@@ -125,6 +133,19 @@ export default function Analytics() {
             <span>最长连亏</span>
             <strong style={{ color: 'var(--loss)' }}>{streaks.longestLoss} 笔</strong>
           </div>
+        </div>
+      )}
+
+      {/* ── P&L Calendar ───────────────────────────────────────────── */}
+      {sessions.length > 0 && (
+        <div className="card card--feature">
+          <div className="card__header">
+            <div>
+              <p className="card__kicker">P&L Calendar</p>
+              <h3 className="card__title card__title--large">月度盈亏日历</h3>
+            </div>
+          </div>
+          <PnLCalendar sessions={sessions} />
         </div>
       )}
 
