@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useState } from 'react';
+import { FormEvent, Suspense, lazy, useEffect, useState } from 'react';
 import { api } from './api/client';
 import { TabNav } from './components/layout/TabNav';
 import type { TabId } from './types';
@@ -43,17 +43,176 @@ function formatReportDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+type AuthState = 'checking' | 'authenticated' | 'unauthenticated';
+
+type LoginScreenProps = {
+  authState: AuthState;
+  errorMessage: string;
+  isSubmitting: boolean;
+  password: string;
+  onPasswordChange: (value: string) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+};
+
+function LoginScreen({
+  authState,
+  errorMessage,
+  isSubmitting,
+  password,
+  onPasswordChange,
+  onSubmit,
+}: LoginScreenProps) {
+  return (
+    <main className="login-shell">
+      <div className="login-orb login-orb--left" aria-hidden="true" />
+      <div className="login-orb login-orb--right" aria-hidden="true" />
+      <section className="login-panel">
+        <p className="login-panel__eyebrow">Review Access</p>
+        <h1 className="login-panel__title">Trading Review Dashboard</h1>
+        <p className="login-panel__text">
+          输入访问密码后，立即进入复盘工作台。
+        </p>
+        <form className="login-form" onSubmit={onSubmit}>
+          <label className="login-form__label" htmlFor="review-password">
+            访问密码
+          </label>
+          <input
+            id="review-password"
+            className="login-form__input"
+            type="password"
+            value={password}
+            onChange={(event) => onPasswordChange(event.target.value)}
+            autoComplete="current-password"
+            autoFocus
+            disabled={authState === 'checking' || isSubmitting}
+          />
+          {errorMessage ? <p className="login-form__error">{errorMessage}</p> : null}
+          <button
+            className="login-form__submit"
+            type="submit"
+            disabled={authState === 'checking' || isSubmitting}
+          >
+            {authState === 'checking' ? '验证中...' : isSubmitting ? '进入中...' : '进入工作台'}
+          </button>
+        </form>
+      </section>
+    </main>
+  );
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabId>('overview');
   const [tradingDays, setTradingDays] = useState<number | null>(null);
+  const [authState, setAuthState] = useState<AuthState>('checking');
+  const [password, setPassword] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const meta = TAB_META[activeTab];
   const reportDate = formatReportDate(new Date());
 
   useEffect(() => {
-    api.getSessions()
-      .then((sessionList) => setTradingDays(sessionList.length))
-      .catch(() => setTradingDays(null));
+    let cancelled = false;
+
+    api.getAuthSession()
+      .then(({ authenticated }) => {
+        if (cancelled) {
+          return;
+        }
+
+        setAuthState(authenticated ? 'authenticated' : 'unauthenticated');
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+
+        setAuthState('unauthenticated');
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  useEffect(() => {
+    if (authState !== 'authenticated') {
+      setTradingDays(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    api.getSessions()
+      .then((sessionList) => {
+        if (!cancelled) {
+          setTradingDays(sessionList.length);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setTradingDays(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authState]);
+
+  async function handleLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!password.trim()) {
+      setErrorMessage('请输入密码。');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setErrorMessage('');
+
+    try {
+      const result = await api.login(password);
+      if (!result.authenticated) {
+        setErrorMessage('密码错误。');
+        return;
+      }
+
+      setPassword('');
+      setAuthState('authenticated');
+      setActiveTab('overview');
+    } catch {
+      setErrorMessage('密码错误。');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleLogout() {
+    try {
+      await api.logout();
+    } catch {
+      // Ignore logout failures and fall back to local state reset.
+    }
+
+    setPassword('');
+    setErrorMessage('');
+    setTradingDays(null);
+    setActiveTab('overview');
+    setAuthState('unauthenticated');
+  }
+
+  if (authState !== 'authenticated') {
+    return (
+      <LoginScreen
+        authState={authState}
+        errorMessage={errorMessage}
+        isSubmitting={isSubmitting}
+        password={password}
+        onPasswordChange={setPassword}
+        onSubmit={handleLogin}
+      />
+    );
+  }
 
   return (
     <div className="app-shell">
@@ -77,6 +236,9 @@ export default function App() {
               <span>交易天数</span>
               <strong>{tradingDays != null ? `${tradingDays} 天` : '—'}</strong>
             </div>
+            <button className="shell-status__action" type="button" onClick={handleLogout}>
+              退出
+            </button>
             <div className="shell-status__stamp" aria-hidden="true">
               <svg viewBox="0 0 24 24" className="shell-status__icon">
                 <path

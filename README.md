@@ -85,9 +85,9 @@ npm run dev
 这条命令会同时启动：
 
 - 前端 Vite 开发服务器：`http://localhost:5173`
-- 后端 API：`http://localhost:3001`
+- 后端 API：`http://localhost:3002`
 
-Vite 已经把 `/api` 代理到 `3001`，前端开发时不需要额外配置。
+Vite 已经把 `/api` 代理到 `3002`，前端开发时不需要额外配置。
 
 ### 单独启动 API
 
@@ -95,7 +95,15 @@ Vite 已经把 `/api` 代理到 `3001`，前端开发时不需要额外配置。
 npm run server
 ```
 
-注意：`npm run dev` 已经会启动 API。不要在第二个终端再运行一次 `npm run server`，否则会遇到 `3001` 端口占用。
+注意：`npm run dev` 已经会启动 API。不要在第二个终端再运行一次 `npm run server`，否则会遇到 `3002` 端口占用。
+
+## 访问控制与生产部署
+
+- 生产服务默认监听 `3002`，可通过 `PORT` 覆盖
+- 页面默认启用简单密码门禁，密码环境变量为 `REVIEW_APP_PASSWORD`
+- 未配置 `REVIEW_APP_PASSWORD` 时不会开放登录
+- 仓库只保留 `deploy/trading-review.service.example`，真实 `deploy/trading-review.service` 已被 `.gitignore` 忽略
+- 生产构建后，Express 会直接托管 `dist/`，可以让 Caddy 直接反向代理到该端口
 
 ## 常用命令
 

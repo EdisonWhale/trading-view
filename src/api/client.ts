@@ -3,7 +3,10 @@
 const BASE = '/api';
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, options);
+  const res = await fetch(`${BASE}${path}`, {
+    credentials: 'same-origin',
+    ...options,
+  });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(text || `HTTP ${res.status}`);
@@ -143,6 +146,18 @@ export function normalizeSessionMarketData(payload: any): import('../types').Ses
 }
 
 export const api = {
+  getAuthSession: () => request<{ authenticated: boolean }>('/auth/session'),
+  login: (password: string) =>
+    request<{ authenticated: boolean }>('/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    }),
+  logout: () =>
+    request<{ authenticated: boolean }>('/auth/logout', {
+      method: 'POST',
+    }),
+
   // Sessions
   getSessions: async () => {
     const result = await request<any[]>('/sessions');

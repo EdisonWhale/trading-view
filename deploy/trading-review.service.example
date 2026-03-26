@@ -1,0 +1,18 @@
+[Unit]
+Description=Trading Review Dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/workspace/Trading-review/Trading-review
+Environment=NODE_ENV=production
+Environment=PORT=3002
+Environment=REVIEW_APP_PASSWORD=replace-with-your-password
+Environment=REVIEW_APP_AUTH_SECRET=replace-with-a-random-secret
+ExecStart=/usr/bin/npm run server
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

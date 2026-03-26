@@ -46,7 +46,10 @@ function buildApp() {
   app.use('/api/sessions', sessionsRouter);
   app.use('/api/trades', tradeRouter);
   app.use('/api/fills', fillRouter);
-  return app.listen(0);
+  return new Promise<ReturnType<typeof app.listen>>((resolve) => {
+    const server = app.listen(0, '127.0.0.1');
+    server.once('listening', () => resolve(server));
+  });
 }
 
 const sessionDetail = {
@@ -184,7 +187,7 @@ describe('sessions routes', () => {
     });
     mocks.getSessionFull.mockReturnValue(sessionDetail);
 
-    const server = buildApp();
+    const server = await buildApp();
     const port = (server.address() as any).port;
 
     const form = new FormData();
@@ -222,7 +225,7 @@ describe('sessions routes', () => {
   it('returns the saved journal entry after patching a session journal', async () => {
     mocks.getJournalBySession.mockReturnValue(sessionDetail.journal);
 
-    const server = buildApp();
+    const server = await buildApp();
     const port = (server.address() as any).port;
 
     const response = await fetch(`http://127.0.0.1:${port}/api/sessions/2026-03-13/journal`, {
@@ -251,7 +254,7 @@ describe('sessions routes', () => {
   it('returns the updated trade after saving an annotation', async () => {
     mocks.getTradeById.mockReturnValue(sessionDetail.trades[0]);
 
-    const server = buildApp();
+    const server = await buildApp();
     const port = (server.address() as any).port;
 
     const response = await fetch(`http://127.0.0.1:${port}/api/trades/7`, {
@@ -291,7 +294,7 @@ describe('sessions routes', () => {
       fills: sessionDetail.fills,
     });
 
-    const server = buildApp();
+    const server = await buildApp();
     const port = (server.address() as any).port;
 
     const response = await fetch(`http://127.0.0.1:${port}/api/sessions/2026-03-13/market?timeframe=1m`);
@@ -314,7 +317,7 @@ describe('sessions routes', () => {
       reason: 'Opening drive breakout after reclaim',
     });
 
-    const server = buildApp();
+    const server = await buildApp();
     const port = (server.address() as any).port;
 
     const response = await fetch(`http://127.0.0.1:${port}/api/fills/1/reason`, {
