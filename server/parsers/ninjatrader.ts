@@ -29,6 +29,19 @@ export interface TradeRecord {
   annotation: null;
 }
 
+export interface OpenPositionRecord {
+  session_date: string;
+  instrument: string;
+  side: 'long' | 'short';
+  qty: number;
+  entry_time: string;
+  entry_price: number;
+  mark_time: string;
+  mark_price: number;
+  open_pnl: number;
+  order_id: string | null;
+}
+
 export interface ParseResult {
   date: string;
   instrument: string;
@@ -37,9 +50,14 @@ export interface ParseResult {
   endingBalance: number;
   grossPnl: number;
   commissions: number;
+  tradingFees: number;
   netPnl: number;
+  realizedNetPnl: number;
+  openTradeEquityChange: number;
+  endingOpenTradeEquity: number;
   fills: FillRecord[];
   trades: TradeRecord[];
+  openPositions: OpenPositionRecord[];
 }
 
 // ─── Instrument metadata ──────────────────────────────────────────────────────
@@ -114,6 +132,80 @@ function parseNumber(raw: string): number {
   return parseFloat(raw.replace(/,/g, '')) || 0;
 }
 
+function parseBalanceCell(raw: string): number {
+  return raw === '-' ? 0 : parseNumber(raw);
+}
+
+interface BalanceSnapshot {
+  ledger: number;
+  openTrade: number;
+  total: number;
+}
+
+function buildEmptyBalanceSnapshot(): BalanceSnapshot {
+  return { ledger: 0, openTrade: 0, total: 0 };
+}
+
+function extractBalanceRow(sectionText: string, labelPattern: RegExp): BalanceSnapshot {
+  const line = sectionText
+    .split('\n')
+    .map((entry) => entry.trim())
+    .find((entry) => labelPattern.test(entry));
+
+  if (!line) {
+    return buildEmptyBalanceSnapshot();
+  }
+
+  const rowMatch = line
+    .replace(/\bUS\$/gi, '')
+    .match(/(-|-?[\d,]+\.\d{2})\s+(-|-?[\d,]+\.\d{2})\s+(-|-?[\d,]+\.\d{2})\s*$/);
+
+  if (!rowMatch) {
+    return buildEmptyBalanceSnapshot();
+  }
+
+  return {
+    ledger: parseBalanceCell(rowMatch[1]),
+    openTrade: parseBalanceCell(rowMatch[2]),
+    total: parseBalanceCell(rowMatch[3]),
+  };
+}
+
+function extractAccountBalances(text: string): {
+  beginning: BalanceSnapshot;
+  activity: BalanceSnapshot;
+  ending: BalanceSnapshot;
+} {
+  const sectionMatch = text.match(/Account Balances([\s\S]*?)Net Liquidating Value/i);
+  const sectionText = sectionMatch?.[1] ?? '';
+
+  return {
+    beginning: extractBalanceRow(sectionText, /^Beginning balance/i),
+    activity: extractBalanceRow(sectionText, /^Activity\b/i),
+    ending: extractBalanceRow(sectionText, /^Ending Balance/i),
+  };
+}
+
+interface TradingDetailSection {
+  instrument: string;
+  text: string;
+}
+
+function getTradingDetailSections(text: string): TradingDetailSection[] {
+  const sectionPattern = /Trading details for .*?\(([A-Z]{1,4}[FGHJKMNQUVXZ]\d{1,2})\)/gi;
+  const sections = [...text.matchAll(sectionPattern)];
+
+  return sections.map((sectionMatch, index) => {
+    const instrument = sectionMatch[1];
+    const start = sectionMatch.index ?? 0;
+    const end = sections[index + 1]?.index ?? text.length;
+    return {
+      instrument,
+      text: text.slice(start, end),
+    };
+  });
+}
+
 // ─── Fill parser ──────────────────────────────────────────────────────────────
 
 /**
@@ -126,20 +218,15 @@ function parseNumber(raw: string): number {
  */
 function parseFills(text: string, sessionDate: string): FillRecord[] {
   const fills: FillRecord[] = [];
-  const sectionPattern =
-    /Trading details for .*?\(([A-Z]{1,4}[FGHJKMNQUVXZ]\d{1,2})\)\s*Date & Time Code Buy Qty Sell Qty Filled Price Order_Id\s*Fills\s*([\s\S]*?)(?=\n\d+\s+\d+\n[A-Z0-9]+ US\$)/gi;
   const fillPattern =
     /(\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2}:\d{2}\s+[AP]M\s*\(GMT\))\s+FILL\s+(-|\d+)\s+(-|\d+)\s+([\d,.]+)\s+([\d,]+)/gi;
-
-  let sectionMatch: RegExpExecArray | null;
   let idx = 0;
 
-  while ((sectionMatch = sectionPattern.exec(text)) !== null) {
-    const [, instrument, sectionText] = sectionMatch;
+  for (const section of getTradingDetailSections(text)) {
     fillPattern.lastIndex = 0;
 
     let fillMatch: RegExpExecArray | null;
-    while ((fillMatch = fillPattern.exec(sectionText)) !== null) {
+    while ((fillMatch = fillPattern.exec(section.text)) !== null) {
       const [, rawTime, rawBuyQty, rawSellQty, rawPrice, orderId] = fillMatch;
       const isBuy = rawBuyQty !== '-';
       const rawQty = isBuy ? rawBuyQty : rawSellQty;
@@ -149,7 +236,7 @@ function parseFills(text: string, sessionDate: string): FillRecord[] {
       fills.push({
         id: ++idx,
         session_date: sessionDate,
-        instrument,
+        instrument: section.instrument,
         timestamp: parseNtTimestamp(rawTime),
         side: isBuy ? 'buy' : 'sell',
         qty,
@@ -162,129 +249,171 @@ function parseFills(text: string, sessionDate: string): FillRecord[] {
   return fills;
 }
 
+function parsePositionBlock(
+  blockText: string,
+  instrument: string,
+  sessionDate: string
+): OpenPositionRecord[] {
+  const positions: OpenPositionRecord[] = [];
+  const markPattern =
+    /(\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2}:\d{2}\s+[AP]M\s*\(GMT\))\s+MM\s+-\s+-\s+([\d,.]+)\s+[\d,]+/gi;
+  const costPattern =
+    /(\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2}:\d{2}\s+[AP]M\s*\(GMT\))\s+COST\s+(-|\d+)\s+(-|\d+)\s+([\d,.]+)\s+([\d,]+)/gi;
+
+  let markTime = '';
+  let markPrice = 0;
+  let markMatch: RegExpExecArray | null;
+  markPattern.lastIndex = 0;
+  while ((markMatch = markPattern.exec(blockText)) !== null) {
+    markTime = parseNtTimestamp(markMatch[1]);
+    markPrice = parseNumber(markMatch[2]);
+  }
+
+  costPattern.lastIndex = 0;
+  let costMatch: RegExpExecArray | null;
+  while ((costMatch = costPattern.exec(blockText)) !== null) {
+    const [, rawTime, rawBuyQty, rawSellQty, rawPrice, orderId] = costMatch;
+    const isLong = rawBuyQty !== '-';
+    const rawQty = isLong ? rawBuyQty : rawSellQty;
+    const qty = parseInt(rawQty, 10);
+    if (!qty) {
+      continue;
+    }
+
+    const entryPrice = parseNumber(rawPrice);
+    const multiplier = getMultiplier(instrument);
+    const openPnl = isLong
+      ? (markPrice - entryPrice) * qty * multiplier
+      : (entryPrice - markPrice) * qty * multiplier;
+
+    positions.push({
+      session_date: sessionDate,
+      instrument,
+      side: isLong ? 'long' : 'short',
+      qty,
+      entry_time: parseNtTimestamp(rawTime),
+      entry_price: entryPrice,
+      mark_time: markTime,
+      mark_price: markPrice,
+      open_pnl: openPnl,
+      order_id: orderId?.replace(/,/g, '') ?? null,
+    });
+  }
+
+  return positions;
+}
+
+function extractSectionSlice(sectionText: string, startIdx: number, endMarkers: string[]): string {
+  if (startIdx === -1) {
+    return '';
+  }
+
+  const endIdx = endMarkers
+    .map((marker) => sectionText.indexOf(marker, startIdx))
+    .filter((idx) => idx !== -1)
+    .sort((left, right) => left - right)[0] ?? sectionText.length;
+
+  return sectionText.slice(startIdx, endIdx);
+}
+
+function parseCarryInPositions(text: string, sessionDate: string): OpenPositionRecord[] {
+  const carryInPositions: OpenPositionRecord[] = [];
+
+  for (const section of getTradingDetailSections(text)) {
+    const startIdx = section.text.indexOf('Open Positions - Beginning of Period');
+    if (startIdx === -1) {
+      continue;
+    }
+
+    const blockText = extractSectionSlice(section.text, startIdx, ['Fills', `${section.instrument} US$`]);
+    carryInPositions.push(...parsePositionBlock(blockText, section.instrument, sessionDate));
+  }
+
+  return carryInPositions;
+}
+
+function parseOpenPositions(text: string, sessionDate: string): OpenPositionRecord[] {
+  const openPositions: OpenPositionRecord[] = [];
+
+  for (const section of getTradingDetailSections(text)) {
+    const marker = /Open Positions(?!\s*-\s*Beginning of Period)/.exec(section.text);
+    const startIdx = marker?.index ?? -1;
+    if (startIdx === -1) {
+      continue;
+    }
+
+    const blockText = extractSectionSlice(section.text, startIdx, [`${section.instrument} US$`]);
+    openPositions.push(...parsePositionBlock(blockText, section.instrument, sessionDate));
+  }
+
+  return openPositions;
+}
+
 // ─── FIFO trade pairing ───────────────────────────────────────────────────────
 
 interface OpenLot {
+  side: 'long' | 'short';
   price: number;
   qty: number;
   time: string;
-  fillId: number;
 }
 
 function pairFills(
   fills: FillRecord[],
-  instrument: string
+  instrument: string,
+  initialLots: OpenLot[] = []
 ): TradeRecord[] {
   const trades: TradeRecord[] = [];
-  const openLots: OpenLot[] = [];
-  let currentDirection: 'long' | 'short' | null = null;
+  const openLots: OpenLot[] = initialLots
+    .map((lot) => ({ ...lot }))
+    .sort((left, right) => left.time.localeCompare(right.time));
+  const sortedFills = [...fills].sort((left, right) => left.timestamp.localeCompare(right.timestamp));
 
-  for (const fill of fills) {
-    const isBuy = fill.side === 'buy';
+  for (const fill of sortedFills) {
+    let remaining = fill.qty;
+    const fillSide: 'long' | 'short' = fill.side === 'buy' ? 'long' : 'short';
 
-    if (isBuy) {
-      if (currentDirection === 'short' && openLots.length > 0) {
-        // Closing (or reversing) a short position
-        let remaining = fill.qty;
+    while (remaining > 0 && openLots.length > 0 && openLots[0].side !== fillSide) {
+      const open = openLots[0];
+      const matchQty = Math.min(remaining, open.qty);
+      const multiplier = getMultiplier(instrument);
+      const grossPnl = open.side === 'long'
+        ? (fill.price - open.price) * matchQty * multiplier
+        : (open.price - fill.price) * matchQty * multiplier;
 
-        while (remaining > 0 && openLots.length > 0) {
-          const open = openLots[0];
-          const matchQty = Math.min(remaining, open.qty);
-          const multiplier = getMultiplier(instrument);
-          const grossPnl = (open.price - fill.price) * matchQty * multiplier;
+      trades.push({
+        session_date: fill.session_date,
+        instrument,
+        direction: open.side,
+        entry_time: open.time,
+        entry_price: open.price,
+        exit_time: fill.timestamp,
+        exit_price: fill.price,
+        qty: matchQty,
+        gross_pnl: grossPnl,
+        commission: 0,
+        net_pnl: grossPnl,
+        duration_seconds: Math.max(
+          0,
+          Math.round((new Date(fill.timestamp).getTime() - new Date(open.time).getTime()) / 1000),
+        ),
+        annotation: null,
+      });
 
-          trades.push({
-            session_date: fill.session_date,
-            instrument,
-            direction: 'short',
-            entry_time: open.time,
-            entry_price: open.price,
-            exit_time: fill.timestamp,
-            exit_price: fill.price,
-            qty: matchQty,
-            gross_pnl: grossPnl,
-            commission: 0,
-            net_pnl: grossPnl,
-            duration_seconds: Math.max(
-              0,
-              Math.round(
-                (new Date(fill.timestamp).getTime() -
-                  new Date(open.time).getTime()) /
-                  1000
-              )
-            ),
-            annotation: null,
-          });
-
-          open.qty -= matchQty;
-          remaining -= matchQty;
-          if (open.qty === 0) openLots.shift();
-        }
-
-        if (remaining > 0) {
-          // Position reversed to long
-          openLots.push({ price: fill.price, qty: remaining, time: fill.timestamp, fillId: fill.id });
-          currentDirection = 'long';
-        } else if (openLots.length === 0) {
-          currentDirection = null;
-        }
-      } else {
-        // Opening or adding to long position
-        openLots.push({ price: fill.price, qty: fill.qty, time: fill.timestamp, fillId: fill.id });
-        currentDirection = 'long';
+      open.qty -= matchQty;
+      remaining -= matchQty;
+      if (open.qty === 0) {
+        openLots.shift();
       }
-    } else {
-      // Sell fill
-      if (currentDirection === 'long' && openLots.length > 0) {
-        // Closing (or reversing) a long position
-        let remaining = fill.qty;
+    }
 
-        while (remaining > 0 && openLots.length > 0) {
-          const open = openLots[0];
-          const matchQty = Math.min(remaining, open.qty);
-          const multiplier = getMultiplier(instrument);
-          const grossPnl = (fill.price - open.price) * matchQty * multiplier;
-
-          trades.push({
-            session_date: fill.session_date,
-            instrument,
-            direction: 'long',
-            entry_time: open.time,
-            entry_price: open.price,
-            exit_time: fill.timestamp,
-            exit_price: fill.price,
-            qty: matchQty,
-            gross_pnl: grossPnl,
-            commission: 0,
-            net_pnl: grossPnl,
-            duration_seconds: Math.max(
-              0,
-              Math.round(
-                (new Date(fill.timestamp).getTime() -
-                  new Date(open.time).getTime()) /
-                  1000
-              )
-            ),
-            annotation: null,
-          });
-
-          open.qty -= matchQty;
-          remaining -= matchQty;
-          if (open.qty === 0) openLots.shift();
-        }
-
-        if (remaining > 0) {
-          // Position reversed to short
-          openLots.push({ price: fill.price, qty: remaining, time: fill.timestamp, fillId: fill.id });
-          currentDirection = 'short';
-        } else if (openLots.length === 0) {
-          currentDirection = null;
-        }
-      } else {
-        // Opening or adding to short position
-        openLots.push({ price: fill.price, qty: fill.qty, time: fill.timestamp, fillId: fill.id });
-        currentDirection = 'short';
-      }
+    if (remaining > 0) {
+      openLots.push({
+        side: fillSide,
+        price: fill.price,
+        qty: remaining,
+        time: fill.timestamp,
+      });
     }
   }
 
@@ -347,6 +476,35 @@ function extractCashAdjustments(text: string): number {
   return total;
 }
 
+function extractTradingFees(text: string): number {
+  const summaryMatch = text.match(/Daily Activity Summary([\s\S]*?)Daily Trading Details/i);
+  const summaryText = summaryMatch?.[1] ?? '';
+  let total = 0;
+
+  for (const rawLine of summaryText.split('\n')) {
+    const line = rawLine.trim();
+    if (!/^\d{2}\/\d{2}\/\d{4}\s+/.test(line)) {
+      continue;
+    }
+
+    const tokens = line.split(/\s+/);
+    const label = tokens[1] ?? '';
+
+    if (/^[A-Z]{1,4}[FGHJKMNQUVXZ]\d{1,2}$/.test(label)) {
+      total += Math.abs(parseBalanceCell(tokens[3] ?? '0'));
+      total += Math.abs(parseBalanceCell(tokens[4] ?? '0'));
+      total += Math.abs(parseBalanceCell(tokens[5] ?? '0'));
+      continue;
+    }
+
+    if (label === 'Clearing_Fee') {
+      total += Math.abs(parseBalanceCell(tokens[6] ?? '0'));
+    }
+  }
+
+  return total;
+}
+
 // ─── Main parser ──────────────────────────────────────────────────────────────
 
 export async function parseNinjaTraderPDF(buffer: Buffer): Promise<ParseResult> {
@@ -377,17 +535,19 @@ export async function parseNinjaTraderPDF(buffer: Buffer): Promise<ParseResult> 
   }
 
   // ── 3. Balances ───────────────────────────────────────────────────────────
-  const beginningBalance = extractBalance(
-    text,
-    /Beginning\s+[Bb]alance\s*\$?\s*([\d,]+\.?\d*)/i
-  );
-  const endingBalance = extractBalance(
-    text,
-    /Ending\s+[Bb]alance\s*(?:US\$)?\s*([\d,]+\.?\d*)/i
-  );
+  const balances = extractAccountBalances(text);
+  const netLiquidatingValue = extractBalance(text, /Net Liquidating Value\s*([\d,]+\.\d{2})/i);
+  const beginningBalance =
+    balances.beginning.total ||
+    extractBalance(text, /Beginning\s+[Bb]alance\s*\$?\s*([\d,]+\.?\d*)/i);
+  const ledgerEndingBalance = balances.ending.ledger ||
+    extractBalance(text, /Ending\s+[Bb]alance\s*(?:US\$)?\s*([\d,]+\.?\d*)/i);
+  const endingBalance = netLiquidatingValue || balances.ending.total || ledgerEndingBalance;
 
   // ── 4. Fills ──────────────────────────────────────────────────────────────
   const fills = parseFills(text, sessionDate);
+  const carryInPositions = parseCarryInPositions(text, sessionDate);
+  const openPositions = parseOpenPositions(text, sessionDate);
 
   const primaryInstrument =
     fills.length > 0
@@ -411,7 +571,15 @@ export async function parseNinjaTraderPDF(buffer: Buffer): Promise<ParseResult> 
 
   const trades: TradeRecord[] = [];
   for (const [sym, symFills] of fillsByInstrument) {
-    const symTrades = pairFills(symFills, sym);
+    const initialLots = carryInPositions
+      .filter((position) => position.instrument === sym)
+      .map((position) => ({
+        side: position.side,
+        price: position.entry_price,
+        qty: position.qty,
+        time: position.entry_time,
+      }));
+    const symTrades = pairFills(symFills, sym, initialLots);
     trades.push(...symTrades);
   }
 
@@ -419,22 +587,25 @@ export async function parseNinjaTraderPDF(buffer: Buffer): Promise<ParseResult> 
   trades.sort((a, b) => a.entry_time.localeCompare(b.entry_time));
 
   // ── 6. Aggregate P&L ──────────────────────────────────────────────────────
-  const grossPnl = trades.reduce((s, t) => s + t.gross_pnl, 0);
+  const realizedGrossPnl = trades.reduce((s, t) => s + t.gross_pnl, 0);
   const hasBalanceSnapshot = endingBalance > 0 && beginningBalance > 0;
-  const balanceDerivedNet =
-    endingBalance > 0 && beginningBalance > 0
-      ? endingBalance - beginningBalance
-      : trades.reduce((s, t) => s + t.net_pnl, 0);
   const cashAdjustments = extractCashAdjustments(text);
-  const adjustedNetPnl = hasBalanceSnapshot ? balanceDerivedNet - cashAdjustments : balanceDerivedNet;
+  const realizedNetPnl = hasBalanceSnapshot
+    ? balances.activity.ledger - cashAdjustments
+    : trades.reduce((s, t) => s + t.net_pnl, 0);
+  const totalNetPnl = hasBalanceSnapshot
+    ? balances.activity.total - cashAdjustments
+    : realizedNetPnl;
   const totalExecutedQty = fills.reduce((sum, fill) => sum + fill.qty, 0);
+  const tradingFees = extractTradingFees(text);
   const inferredCommissions =
     hasBalanceSnapshot
-      ? Math.abs(grossPnl - adjustedNetPnl)
+      ? Math.abs(realizedGrossPnl - realizedNetPnl)
       : extractCommissions(text);
+  const sessionCommissions = inferredCommissions;
   const commissionPerSideContract =
-    inferredCommissions > 0 && totalExecutedQty > 0
-      ? inferredCommissions / totalExecutedQty
+    tradingFees > 0 && totalExecutedQty > 0
+      ? tradingFees / totalExecutedQty
       : 0;
 
   for (const trade of trades) {
@@ -442,7 +613,13 @@ export async function parseNinjaTraderPDF(buffer: Buffer): Promise<ParseResult> 
     trade.net_pnl = trade.gross_pnl - trade.commission;
   }
 
-  const commissions = trades.reduce((s, t) => s + t.commission, 0);
+  const grossPnl = totalNetPnl + sessionCommissions;
+  const openTradeEquityChange = hasBalanceSnapshot
+    ? balances.activity.openTrade
+    : 0;
+  const endingOpenTradeEquity = hasBalanceSnapshot
+    ? balances.ending.openTrade
+    : openPositions.reduce((sum, position) => sum + position.open_pnl, 0);
 
   return {
     date: sessionDate,
@@ -451,10 +628,15 @@ export async function parseNinjaTraderPDF(buffer: Buffer): Promise<ParseResult> 
     beginningBalance,
     endingBalance,
     grossPnl,
-    commissions,
-    netPnl: adjustedNetPnl,
+    commissions: sessionCommissions,
+    tradingFees,
+    netPnl: totalNetPnl,
+    realizedNetPnl,
+    openTradeEquityChange,
+    endingOpenTradeEquity,
     fills,
     trades,
+    openPositions,
   };
 }
 
@@ -467,8 +649,13 @@ function buildEmptyResult(date: string, instrument: string, instrumentName: stri
     endingBalance: 0,
     grossPnl: 0,
     commissions: 0,
+    tradingFees: 0,
     netPnl: 0,
+    realizedNetPnl: 0,
+    openTradeEquityChange: 0,
+    endingOpenTradeEquity: 0,
     fills: [],
     trades: [],
+    openPositions: [],
   };
 }

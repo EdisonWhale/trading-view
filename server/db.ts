@@ -23,7 +23,11 @@ db.exec(`
     ending_balance REAL,
     gross_pnl REAL,
     commissions REAL,
+    trading_fees REAL DEFAULT 0,
     net_pnl REAL,
+    realized_net_pnl REAL DEFAULT 0,
+    open_trade_equity_change REAL DEFAULT 0,
+    ending_open_trade_equity REAL DEFAULT 0,
     trade_count INTEGER DEFAULT 0,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
@@ -56,6 +60,21 @@ db.exec(`
     net_pnl REAL,
     duration_seconds INTEGER,
     annotation TEXT,
+    FOREIGN KEY (session_date) REFERENCES sessions(date) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS open_positions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_date TEXT NOT NULL,
+    instrument TEXT,
+    side TEXT,
+    qty INTEGER,
+    entry_time TEXT,
+    entry_price REAL,
+    mark_time TEXT,
+    mark_price REAL,
+    open_pnl REAL,
+    order_id TEXT,
     FOREIGN KEY (session_date) REFERENCES sessions(date) ON DELETE CASCADE
   );
 
@@ -97,6 +116,21 @@ try {
   }
 }
 
+for (const statement of [
+  `ALTER TABLE sessions ADD COLUMN trading_fees REAL DEFAULT 0`,
+  `ALTER TABLE sessions ADD COLUMN realized_net_pnl REAL DEFAULT 0`,
+  `ALTER TABLE sessions ADD COLUMN open_trade_equity_change REAL DEFAULT 0`,
+  `ALTER TABLE sessions ADD COLUMN ending_open_trade_equity REAL DEFAULT 0`,
+]) {
+  try {
+    db.exec(statement);
+  } catch (error) {
+    if (!(error instanceof Error) || !/duplicate column name/i.test(error.message)) {
+      throw error;
+    }
+  }
+}
+
 // ─── Type definitions ────────────────────────────────────────────────────────
 
 export interface SessionRow {
@@ -107,7 +141,11 @@ export interface SessionRow {
   ending_balance: number;
   gross_pnl: number;
   commissions: number;
+  trading_fees?: number;
   net_pnl: number;
+  realized_net_pnl: number;
+  open_trade_equity_change: number;
+  ending_open_trade_equity: number;
   trade_count: number;
   created_at: string;
   updated_at: string;
@@ -139,6 +177,20 @@ export interface TradeRow {
   net_pnl: number;
   duration_seconds: number | null;
   annotation: string | null;
+}
+
+export interface OpenPositionRow {
+  id: number;
+  session_date: string;
+  instrument: string | null;
+  side: string | null;
+  qty: number;
+  entry_time: string | null;
+  entry_price: number | null;
+  mark_time: string | null;
+  mark_price: number | null;
+  open_pnl: number;
+  order_id: string | null;
 }
 
 export interface JournalRow {
@@ -173,9 +225,11 @@ export interface MarketBarRow {
 const stmts = {
   upsertSession: db.prepare<SessionRow>(`
     INSERT INTO sessions (date, instrument, instrument_name, beginning_balance, ending_balance,
-      gross_pnl, commissions, net_pnl, trade_count, updated_at)
+      gross_pnl, commissions, trading_fees, net_pnl, realized_net_pnl, open_trade_equity_change,
+      ending_open_trade_equity, trade_count, updated_at)
     VALUES (@date, @instrument, @instrument_name, @beginning_balance, @ending_balance,
-      @gross_pnl, @commissions, @net_pnl, @trade_count, datetime('now'))
+      @gross_pnl, @commissions, @trading_fees, @net_pnl, @realized_net_pnl, @open_trade_equity_change,
+      @ending_open_trade_equity, @trade_count, datetime('now'))
     ON CONFLICT(date) DO UPDATE SET
       instrument       = excluded.instrument,
       instrument_name  = excluded.instrument_name,
@@ -183,7 +237,11 @@ const stmts = {
       ending_balance   = excluded.ending_balance,
       gross_pnl        = excluded.gross_pnl,
       commissions      = excluded.commissions,
+      trading_fees     = excluded.trading_fees,
       net_pnl          = excluded.net_pnl,
+      realized_net_pnl = excluded.realized_net_pnl,
+      open_trade_equity_change = excluded.open_trade_equity_change,
+      ending_open_trade_equity = excluded.ending_open_trade_equity,
       trade_count      = excluded.trade_count,
       updated_at       = datetime('now')
   `),
@@ -200,12 +258,23 @@ const stmts = {
       @exit_time, @exit_price, @qty, @gross_pnl, @commission, @net_pnl, @duration_seconds, @annotation)
   `),
 
+  insertOpenPosition: db.prepare<Omit<OpenPositionRow, 'id'>>(`
+    INSERT INTO open_positions (session_date, instrument, side, qty, entry_time, entry_price,
+      mark_time, mark_price, open_pnl, order_id)
+    VALUES (@session_date, @instrument, @side, @qty, @entry_time, @entry_price,
+      @mark_time, @mark_price, @open_pnl, @order_id)
+  `),
+
   deleteFillsBySession: db.prepare<{ session_date: string }>(
     'DELETE FROM fills WHERE session_date = @session_date'
   ),
 
   deleteTradesBySession: db.prepare<{ session_date: string }>(
     'DELETE FROM trades WHERE session_date = @session_date'
+  ),
+
+  deleteOpenPositionsBySession: db.prepare<{ session_date: string }>(
+    'DELETE FROM open_positions WHERE session_date = @session_date'
   ),
 
   deleteSession: db.prepare<{ date: string }>(
@@ -234,6 +303,10 @@ const stmts = {
 
   getTradesBySession: db.prepare<{ session_date: string }>(
     'SELECT * FROM trades WHERE session_date = @session_date ORDER BY entry_time ASC'
+  ),
+
+  getOpenPositionsBySession: db.prepare<{ session_date: string }>(
+    'SELECT * FROM open_positions WHERE session_date = @session_date ORDER BY entry_time ASC'
   ),
 
   getJournal: db.prepare<{ session_date: string }>(
@@ -304,14 +377,19 @@ const stmts = {
 export function upsertSessionWithData(
   session: Omit<SessionRow, 'created_at' | 'updated_at'>,
   fills: Omit<FillRow, 'id'>[],
-  trades: Omit<TradeRow, 'id'>[]
+  trades: Omit<TradeRow, 'id'>[],
+  openPositions: Omit<OpenPositionRow, 'id'>[],
 ): void {
   const insertAll = db.transaction(() => {
     stmts.upsertSession.run(session as unknown as SessionRow);
     stmts.deleteFillsBySession.run({ session_date: session.date });
     stmts.deleteTradesBySession.run({ session_date: session.date });
+    stmts.deleteOpenPositionsBySession.run({ session_date: session.date });
     for (const fill of fills) stmts.insertFill.run(fill as unknown as Omit<FillRow, 'id'>);
     for (const trade of trades) stmts.insertTrade.run(trade as unknown as Omit<TradeRow, 'id'>);
+    for (const position of openPositions) {
+      stmts.insertOpenPosition.run(position as unknown as Omit<OpenPositionRow, 'id'>);
+    }
   });
   insertAll();
 }
@@ -324,12 +402,14 @@ export function getSessionFull(date: string): {
   session: SessionRow | undefined;
   fills: FillRow[];
   trades: TradeRow[];
+  open_positions: OpenPositionRow[];
   journal: JournalRow | undefined;
 } {
   return {
     session: stmts.getSession.get({ date }) as SessionRow | undefined,
     fills: stmts.getFillsBySession.all({ session_date: date }) as FillRow[],
     trades: stmts.getTradesBySession.all({ session_date: date }) as TradeRow[],
+    open_positions: stmts.getOpenPositionsBySession.all({ session_date: date }) as OpenPositionRow[],
     journal: stmts.getJournal.get({ session_date: date }) as JournalRow | undefined,
   };
 }
